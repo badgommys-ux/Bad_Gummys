@@ -1,0 +1,6 @@
+{
+  "name": "BadGommys",
+  "description": "Tienda en línea de gomitas artesanales dulces y picosas. Catálogo, pedidos, seguimiento en tiempo real, ERP artesanal, Chatbot Copilot y sistema de envío de correos, ofertas, anuncios y detalles de pedidos a clientes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
