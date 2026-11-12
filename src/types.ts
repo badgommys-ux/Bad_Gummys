@@ -29,7 +29,27 @@ export interface User {
   email: string;
   role: 'customer' | 'admin';
   phone?: string;
+  secondaryPhone?: string;
   address?: string;
+  // Dirección detallada y logística
+  streetAndNumber?: string;
+  interiorNumber?: string;
+  crossStreets?: string;
+  colony?: string;
+  postalCode?: string;
+  city?: string;
+  state?: string;
+  deliveryReferences?: string;
+  addressType?: 'Casa' | 'Oficina' | 'Taller' | 'Otro';
+  preferredDeliverySchedule?: string;
+  // Información adicional de perfil y preferencias
+  birthDate?: string;
+  favoriteSpiceLevel?: string;
+  favoriteGummy?: string;
+  rfc?: string;
+  requiresInvoice?: boolean;
+  wantsSurpriseSamples?: boolean;
+  specialInstructions?: string;
   avatar?: string;
   registeredAt: string;
   totalOrders?: number;
@@ -210,4 +230,55 @@ export interface ERPPurchaseOrder {
   cfdiInvoice: string;
   status: 'Recibida en Almacén' | 'Enviada al Proveedor' | 'Pendiente de emisión';
   receivedInStock: boolean;
+}
+
+/* ========================================================= */
+/* ODOO SCM / ERP INTEGRATION INTERFACES                     */
+/* ========================================================= */
+export interface OdooConfig {
+  baseUrl: string;
+  db: string;
+  username: string;
+  apiKey: string;
+  autoSyncStock: boolean;
+  autoSyncOrders: boolean;
+  autoSyncInsumos: boolean;
+  activeWarehouseId?: number;
+  warehouseName?: string;
+  connected: boolean;
+  lastSyncAt?: string;
+}
+
+export interface OdooSyncLog {
+  id: string;
+  timestamp: string;
+  model: 'product.product' | 'sale.order' | 'stock.quant' | 'mrp.production' | 'purchase.order' | 'res.partner';
+  action: 'import' | 'export' | 'sync' | 'test_connection';
+  status: 'success' | 'warning' | 'error';
+  recordsAffected: number;
+  message: string;
+  details?: string;
+}
+
+export interface OdooProductMapping {
+  odooId: number;
+  localProductId: string;
+  odooName: string;
+  odooDefaultCode: string;
+  odooQtyAvailable: number;
+  localStock: number;
+  priceUnit: number;
+  lastSyncedAt: string;
+  status: 'sincronizado' | 'desfasado' | 'pendiente';
+}
+
+export interface OdooInsumoMapping {
+  odooId: number;
+  localInsumoId: string;
+  odooName: string;
+  odooCode: string;
+  odooQty: number;
+  localQty: number;
+  unitCost: number;
+  status: 'sincronizado' | 'desfasado' | 'pendiente';
 }

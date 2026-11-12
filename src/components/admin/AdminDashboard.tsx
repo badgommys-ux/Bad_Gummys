@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Product, 
   Order, 
@@ -19,6 +19,7 @@ import {
   INITIAL_ERP_BATCHES,
   INITIAL_ERP_PURCHASE_ORDERS
 } from '../../data/initialData';
+import { saveAdminProfile, getSavedAdminProfile } from '../../utils/userStorage';
 import { AdminCustomersTab } from './AdminCustomersTab';
 import { AdminProductsTab } from './AdminProductsTab';
 import { AdminErpTab } from './AdminErpTab';
@@ -26,11 +27,14 @@ import { AdminOrdersTab } from './AdminOrdersTab';
 import { AdminShipmentsTab } from './AdminShipmentsTab';
 import { AdminReportsTab } from './AdminReportsTab';
 import { AdminCampaignsTab } from './AdminCampaignsTab';
+import { AdminOdooTab } from './AdminOdooTab';
 import { generateSmartBotReply } from '../../utils/botReplyEngine';
 import { 
   ShieldCheck, 
   Shield,
+  Camera,
   LayoutGrid,
+  Zap,
   Package, 
   ShoppingBag, 
   Users, 
@@ -52,7 +56,6 @@ import {
   Eye,
   AlertTriangle,
   ArrowRight,
-  TrendingUp,
   Tag,
   ExternalLink,
   Bot,
@@ -81,12 +84,18 @@ interface AdminDashboardProps {
   onDeleteProduct: (id: string) => void;
   onAddCustomer?: (customer: User) => void;
   onUpdateCustomer?: (customer: User) => void;
+  onDeleteCustomer?: (id: string) => void;
   onAddOrder?: (order: Order) => void;
+  onUpdateOrder?: (order: Order) => void;
+  onDeleteOrder?: (id: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, trackingNumber?: string, courierName?: string) => void;
   onConfirmPayment: (orderId: string, status: PaymentStatus) => void;
   onReplyMessage: (messageId: string, reply: string) => void;
   onResetStartupData: () => void;
+  onResetAllToZero?: () => void;
   onExitAdmin: () => void;
+  currentUser?: User | null;
+  onUpdateUser?: (user: User) => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -99,16 +108,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteProduct,
   onAddCustomer,
   onUpdateCustomer,
+  onDeleteCustomer,
   onAddOrder,
+  onUpdateOrder,
+  onDeleteOrder,
   onUpdateOrderStatus,
   onConfirmPayment,
   onReplyMessage,
   onResetStartupData,
+  onResetAllToZero,
   onExitAdmin,
+  currentUser,
+  onUpdateUser,
 }) => {
+  const adminAvatarInputRef = useRef<HTMLInputElement>(null);
+  const currentAdminProfile = getSavedAdminProfile();
+  const adminAvatar = currentUser?.avatar || currentAdminProfile.avatar;
+
+  const handleAdminAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        saveAdminProfile({ avatar: base64 });
+        if (currentUser && onUpdateUser) {
+          onUpdateUser({
+            ...currentUser,
+            avatar: base64,
+          });
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Navigation tabs matching the screenshot
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'clientes' | 'productos' | 'erp' | 'pedidos' | 'envios' | 'mensajes' | 'campanas' | 'copilot' | 'reportes'
+    'dashboard' | 'clientes' | 'productos' | 'erp' | 'pedidos' | 'envios' | 'mensajes' | 'campanas' | 'copilot' | 'reportes' | 'odoo'
   >('dashboard');
 
   // Search and filter states
@@ -207,6 +245,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     localStorage.setItem('badgommys_erp_purchase_orders', JSON.stringify(erpPurchaseOrders));
   }, [erpPurchaseOrders]);
 
+  const [erpRecipes, setErpRecipes] = useState<ERPRecipe[]>(() => {
+    try {
+      const saved = localStorage.getItem('badgommys_erp_recipes');
+      return saved ? JSON.parse(saved) : INITIAL_ERP_RECIPES;
+    } catch {
+      return INITIAL_ERP_RECIPES;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('badgommys_erp_recipes', JSON.stringify(erpRecipes));
+  }, [erpRecipes]);
+
+  const handleUpdateRecipe = (updated: ERPRecipe) => {
+    setErpRecipes(prev => prev.map(r => r.id === updated.id ? updated : r));
+  };
+
+  const handleDeleteInsumo = (id: string) => {
+    setErpInsumos(prev => prev.filter(i => i.id !== id));
+  };
+
+  const handleUpdateBatch = (updated: ERPBatch) => {
+    setErpBatches(prev => prev.map(b => b.id === updated.id ? updated : b));
+  };
+
+  const handleDeleteBatch = (id: string) => {
+    setErpBatches(prev => prev.filter(b => b.id !== id));
+  };
+
+  const handleUpdatePurchaseOrder = (updated: ERPPurchaseOrder) => {
+    setErpPurchaseOrders(prev => prev.map(p => p.id === updated.id ? updated : p));
+  };
+
+  const handleDeletePurchaseOrder = (id: string) => {
+    setErpPurchaseOrders(prev => prev.filter(p => p.id !== id));
+  };
+
+  // Reset Everything to 0 state & handler
+  const [showResetZeroModal, setShowResetZeroModal] = useState(false);
+
+  const handleConfirmResetZero = () => {
+    // 1. Reset ERP local states
+    setErpBatches([]);
+    setErpPurchaseOrders([]);
+    setErpInsumos(prev => {
+      const zeroInsumos = prev.map(ins => ({ ...ins, stock: 0 }));
+      localStorage.setItem('badgommys_erp_insumos', JSON.stringify(zeroInsumos));
+      return zeroInsumos;
+    });
+    localStorage.setItem('badgommys_erp_batches', JSON.stringify([]));
+    localStorage.setItem('badgommys_erp_purchase_orders', JSON.stringify([]));
+    localStorage.removeItem('badgommys_erp_pos');
+
+    // 2. Call app-level reset (orders, products stock, customers stats, messages)
+    if (onResetAllToZero) {
+      onResetAllToZero();
+    }
+
+    setShowResetZeroModal(false);
+  };
+
   const handleUpdateInsumo = (updated: ERPInsumo) => {
     setErpInsumos(prev => prev.map(i => i.id === updated.id ? updated : i));
   };
@@ -221,23 +320,131 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleAddBatch = (newBatch: ERPBatch, targetProduct?: Product) => {
     setErpBatches(prev => [newBatch, ...prev]);
+
+    // 1. Increase finished product stock in catalog
     if (targetProduct && onUpdateProduct) {
       onUpdateProduct({
         ...targetProduct,
         stock: targetProduct.stock + newBatch.units,
       });
     }
+
+    // 2. Automatically deduct required raw materials (insumos) from inventory based on recipe BOM
+    const units = newBatch.units;
+    setErpInsumos(prev => prev.map(ins => {
+      let deductedStock = ins.stock;
+
+      // Deduct bags (ins-4) - 1 unit per finished bag
+      if (ins.id === 'ins-4' || (ins.category === 'Empaque & Envase' && ins.name.toLowerCase().includes('bolsa'))) {
+        deductedStock = Math.max(0, ins.stock - units);
+      }
+      // Deduct labels (ins-5) - 1 unit per finished bag
+      else if (ins.id === 'ins-5' || (ins.category === 'Empaque & Envase' && ins.name.toLowerCase().includes('etiqueta'))) {
+        deductedStock = Math.max(0, ins.stock - units);
+      }
+      // Deduct gelatin / grenetina (ins-3) - ~0.036 kg per 250g bag
+      else if (ins.id === 'ins-3' || ins.name.toLowerCase().includes('grenetina')) {
+        const kgNeeded = Math.round((units * 0.036) * 10) / 10;
+        deductedStock = Math.max(0, Math.round((ins.stock - kgNeeded) * 10) / 10);
+      }
+      // Deduct chamoy (ins-1 / ins-7) - ~0.045 L per bag
+      else if (ins.id === 'ins-1' || ins.name.toLowerCase().includes('chamoy')) {
+        const litersNeeded = Math.round((units * 0.045) * 10) / 10;
+        deductedStock = Math.max(0, Math.round((ins.stock - litersNeeded) * 10) / 10);
+      }
+      // Deduct chile piquín (ins-2) - ~0.030 kg per bag
+      else if (ins.id === 'ins-2' || ins.name.toLowerCase().includes('piquín') || ins.name.toLowerCase().includes('chile')) {
+        const kgChile = Math.round((units * 0.030) * 10) / 10;
+        deductedStock = Math.max(0, Math.round((ins.stock - kgChile) * 10) / 10);
+      }
+
+      return {
+        ...ins,
+        stock: deductedStock,
+        totalValue: Math.round(deductedStock * ins.unitCost * 100) / 100,
+      };
+    }));
   };
 
   const handleMarkPurchaseOrderReceived = (poId: string) => {
-    setErpPurchaseOrders(prev => prev.map(po => po.id === poId ? { ...po, status: 'Recibida en Almacén', receivedInStock: true } : po));
+    const po = erpPurchaseOrders.find(p => p.id === poId);
+    if (!po) return;
+
+    setErpPurchaseOrders(prev => prev.map(p => p.id === poId ? { ...p, status: 'Recibida en Almacén', receivedInStock: true } : p));
+
+    // Automatically increase inventory stock of the requested insumos in the PO!
+    const text = (po.itemsRequested || '').toLowerCase();
+    setErpInsumos(prev => prev.map(ins => {
+      let added = 0;
+      if (ins.id === 'ins-4' || ins.name.toLowerCase().includes('bolsas')) {
+        const match = text.match(/(\d+)\s*(piezas?|pzas?)\s*-\s*bolsas/);
+        if (match) added = parseInt(match[1], 10);
+      } else if (ins.id === 'ins-5' || ins.name.toLowerCase().includes('etiquetas')) {
+        const match = text.match(/(\d+)\s*(piezas?|pzas?)\s*-\s*etiquetas/);
+        if (match) added = parseInt(match[1], 10);
+      } else if (ins.id === 'ins-1' || ins.name.toLowerCase().includes('chamoy')) {
+        const match = text.match(/(\d+)\s*(l|litros?)\s*-\s*chamoy/);
+        if (match) added = parseInt(match[1], 10);
+      } else if (ins.id === 'ins-2' || ins.name.toLowerCase().includes('piquín')) {
+        const match = text.match(/(\d+)\s*(kg|kilos?)\s*-\s*.*chile/);
+        if (match) added = parseInt(match[1], 10);
+      } else if (ins.id === 'ins-3' || ins.name.toLowerCase().includes('grenetina')) {
+        const match = text.match(/(\d+)\s*(kg|kilos?)\s*-\s*grenetina/);
+        if (match) added = parseInt(match[1], 10);
+      } else if (ins.id === 'ins-6' || ins.name.toLowerCase().includes('ácido') || ins.name.toLowerCase().includes('acido')) {
+        const match = text.match(/(\d+)\s*(kg|kilos?)\s*-\s*ácido/);
+        if (match) added = parseInt(match[1], 10);
+      }
+
+      // If no specific regex matched but text contains numbers + kg or pzas
+      if (added === 0 && ins.name) {
+        const insWords = ins.name.toLowerCase().split(' ').filter(w => w.length > 4);
+        for (const w of insWords) {
+          if (text.includes(w)) {
+            const numMatch = text.match(new RegExp(`(\\d+)\\s*(kg|l|piezas?|pzas?)\\s*-\\s*[^\\n]*${w}`, 'i'));
+            if (numMatch) {
+              added = parseInt(numMatch[1], 10);
+              break;
+            }
+          }
+        }
+      }
+
+      if (added > 0) {
+        const newStock = ins.stock + added;
+        return {
+          ...ins,
+          stock: newStock,
+          totalValue: Math.round(newStock * ins.unitCost * 100) / 100,
+          lastRestocked: new Date().toISOString().split('T')[0],
+        };
+      }
+      return ins;
+    }));
   };
 
-  // Quick stats calculation
+  const handleAddPurchaseOrder = (newPO: ERPPurchaseOrder) => {
+    setErpPurchaseOrders(prev => [newPO, ...prev]);
+  };
+
+  // Real-time CRM, SCM & ERP Calculations
   const totalRevenue = orders.reduce((sum, o) => sum + (o.paymentStatus === 'Pagado' ? o.total : 0), 0);
-  const pendingOrdersCount = orders.filter(o => o.status === 'En preparación' || o.status === 'Pendiente').length;
+  const totalOrdersCount = orders.length;
+  const completedOrdersCount = orders.filter(o => o.status === 'Entregado').length;
   const inTransitOrdersCount = orders.filter(o => o.status === 'En camino').length;
+  const pendingOrdersCount = orders.filter(o => o.status === 'En preparación' || o.status === 'Pendiente').length;
   const newMessagesCount = messages.filter(m => m.status === 'Nuevo' || !m.adminReply).length;
+
+  // Real-time Inventory Valuation
+  const totalProductsStock = products.reduce((acc, p) => acc + p.stock, 0);
+  const totalProductsInventoryValue = products.reduce((acc, p) => acc + (p.stock * p.price), 0);
+  const totalInsumosInventoryValue = erpInsumos.reduce((acc, i) => acc + (i.stock * i.unitCost), 0);
+  const totalEnterpriseInventoryValue = totalProductsInventoryValue + totalInsumosInventoryValue;
+  
+  // Real-time CRM Counts
+  const totalCustomersCount = customers.length;
+  const vipCustomersCount = customers.filter(c => c.crmTag === 'VIP').length;
+  const frequentCustomersCount = customers.filter(c => c.crmTag === 'Frecuente').length;
 
   const handleOpenManageOrder = (order: Order) => {
     setSelectedOrderToManage(order);
@@ -416,15 +623,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <aside className="w-64 lg:w-72 shrink-0 bg-[#0d0d12] border-r border-zinc-800/80 flex flex-col justify-between p-4 sticky top-0 h-screen select-none z-30">
         <div className="space-y-6">
           
-          {/* Top Brand / Control Panel Badge */}
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-md">
-              <Shield className="w-5 h-5" />
+          {/* Top Brand / Control Panel Badge with Admin Avatar */}
+          <div className="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/60 rounded-2xl border border-zinc-800/80">
+            <div 
+              onClick={() => adminAvatarInputRef.current?.click()}
+              className="relative w-11 h-11 rounded-2xl overflow-hidden border border-amber-500/50 bg-amber-500/10 flex items-center justify-center shrink-0 cursor-pointer group hover:border-amber-400 transition-all shadow-md"
+              title="Haz clic para subir o cambiar tu foto de Administrador"
+            >
+              {adminAvatar ? (
+                <img 
+                  src={adminAvatar} 
+                  alt="Admin" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                />
+              ) : (
+                <Shield className="w-5 h-5 text-amber-400" />
+              )}
+              <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <Camera className="w-4 h-4 text-amber-300" />
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-black text-white leading-tight">Panel de Control</h2>
-              <p className="text-[11px] font-bold text-amber-500/90">Master Admin BadGommys</p>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xs font-black text-white leading-tight truncate">
+                {currentUser?.name || currentAdminProfile.name}
+              </h2>
+              <p 
+                onClick={() => adminAvatarInputRef.current?.click()}
+                className="text-[10px] font-bold text-amber-400/90 truncate cursor-pointer hover:underline flex items-center gap-1"
+                title="Subir o cambiar foto"
+              >
+                <span>🛡️ Admin</span>
+                <span className="text-[9px] text-zinc-400">• Cambiar foto</span>
+              </p>
             </div>
+            <input
+              type="file"
+              ref={adminAvatarInputRef}
+              onChange={handleAdminAvatarUpload}
+              accept="image/*"
+              className="hidden"
+            />
           </div>
 
           {/* Navigation Links with Badges */}
@@ -518,14 +756,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* 6. Seguimiento de Envíos */}
             <button
               onClick={() => setActiveTab('envios')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer ${
                 activeTab === 'envios'
                   ? 'bg-red-600 text-white font-bold shadow-lg shadow-red-600/30'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
               }`}
             >
-              <Truck className="w-4 h-4" />
-              <span>Seguimiento de Envíos</span>
+              <div className="flex items-center gap-3">
+                <Truck className="w-4 h-4" />
+                <span>Seguimiento de Envíos</span>
+              </div>
+              {inTransitOrdersCount + pendingOrdersCount > 0 && (
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  activeTab === 'envios' 
+                    ? 'bg-black/30 text-white' 
+                    : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                }`}>
+                  {inTransitOrdersCount + pendingOrdersCount}
+                </span>
+              )}
             </button>
 
             {/* 7. Mensajes de Clientes */}
@@ -598,6 +847,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span>Reportes & Gráficas</span>
             </button>
 
+            {/* 11. Integración Odoo SCM & ERP */}
+            <button
+              onClick={() => setActiveTab('odoo')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl border transition-all cursor-pointer ${
+                activeTab === 'odoo'
+                  ? 'bg-purple-600/30 border-purple-500 text-purple-200 font-bold shadow-lg shadow-purple-600/20'
+                  : 'border-purple-500/20 text-purple-300/80 hover:bg-purple-500/10 hover:text-purple-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Zap className="w-4 h-4 text-purple-400" />
+                <span>Odoo SCM & ERP</span>
+              </div>
+              <span className="bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                API
+              </span>
+            </button>
+
           </nav>
         </div>
 
@@ -624,97 +891,124 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             
             {/* Top Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-                  Dashboard Principal
-                </h1>
-                <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-                  Sesión activa: <strong className="text-amber-400">Administrador General</strong> (Acceso Total Concedido) • <strong className="text-emerald-400">Fase de Lanzamiento / Datos Reales</strong>
-                </p>
+              <div className="flex items-center gap-3.5">
+                <div 
+                  onClick={() => adminAvatarInputRef.current?.click()}
+                  className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-amber-500/60 bg-zinc-900 flex items-center justify-center shrink-0 cursor-pointer group shadow-lg hover:border-amber-400 transition-all relative"
+                  title="Cambiar foto de perfil de Administrador"
+                >
+                  {adminAvatar ? (
+                    <img src={adminAvatar} alt="Admin" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  ) : (
+                    <ShieldCheck className="w-6 h-6 text-amber-400" />
+                  )}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Camera className="w-4 h-4 text-amber-300" />
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                    Dashboard Principal
+                  </h1>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Sesión activa: <strong className="text-amber-400">{currentUser?.name || currentAdminProfile.name}</strong> • <strong className="text-emerald-400">Datos Reales Conectados</strong>
+                  </p>
+                </div>
               </div>
 
-              <button
-                onClick={onResetStartupData}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold text-zinc-300 hover:text-white bg-[#14141c] hover:bg-zinc-800 border border-zinc-800 transition-colors cursor-pointer self-start sm:self-auto shadow-md"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Restablecer Datos de Apertura</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                <button
+                  onClick={() => setShowResetZeroModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black text-rose-300 hover:text-white bg-rose-950/50 hover:bg-rose-600 border border-rose-500/40 hover:border-rose-500 transition-all cursor-pointer shadow-lg active:scale-95 group"
+                  title="Poner en 0 todas las ventas, pedidos, stock e insumos"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-400 group-hover:-rotate-180 transition-transform duration-500" />
+                  <span>Reiniciar Todo a 0</span>
+                </button>
+
+                <button
+                  onClick={onResetStartupData}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold text-zinc-300 hover:text-white bg-[#14141c] hover:bg-zinc-800 border border-zinc-800 transition-colors cursor-pointer shadow-md"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Restablecer Datos de Apertura</span>
+                </button>
+              </div>
             </div>
 
-            {/* 4 KPI Cards Grid from Screenshot */}
+            {/* 4 Real-Time KPI Cards Grid (CRM, SCM & Operaciones) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               
-              {/* Card 1: Total de Clientes */}
+              {/* Card 1: Total de Clientes (CRM) */}
               <div className="bg-[#121218] border border-zinc-800/80 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    TOTAL DE CLIENTES
+                    CLIENTES (CRM)
                   </span>
                   <div className="w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
                     <Users className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
-                  <div className="text-4xl font-black text-white">{customers.length}</div>
+                  <div className="text-3xl sm:text-4xl font-black text-white">{totalCustomersCount}</div>
                   <p className="text-xs text-emerald-400 font-semibold mt-1">
-                    ↗ Fase de Apertura (Nuevos Registros 🚀)
+                    {vipCustomersCount} VIP • {frequentCustomersCount} frecuentes
                   </p>
                 </div>
               </div>
 
-              {/* Card 2: Pedidos Recibidos */}
+              {/* Card 2: Pedidos & SCM */}
               <div className="bg-[#121218] border border-zinc-800/80 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    PEDIDOS RECIBIDOS
+                    PEDIDOS & SCM
                   </span>
                   <div className="w-8 h-8 rounded-full bg-red-600/20 border border-red-500/30 flex items-center justify-center text-red-400">
                     <ShoppingBag className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
-                  <div className="text-4xl font-black text-white">{orders.length}</div>
-                  <p className="text-xs text-zinc-400 font-medium mt-1">
-                    {inTransitOrdersCount} en reparto • {pendingOrdersCount} en taller
+                  <div className="text-3xl sm:text-4xl font-black text-white">{totalOrdersCount}</div>
+                  <p className="text-xs text-sky-400 font-medium mt-1">
+                    {inTransitOrdersCount} en moto • {pendingOrdersCount} en taller
                   </p>
                 </div>
               </div>
 
-              {/* Card 3: Ventas de Apertura */}
+              {/* Card 3: Ventas Cobradas */}
               <div className="bg-[#121218] border border-zinc-800/80 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    VENTAS DE APERTURA
+                    VENTAS COBRADAS
                   </span>
                   <div className="w-8 h-8 rounded-full bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                     <DollarSign className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
-                  <div className="text-4xl font-black text-white">
-                    ${totalRevenue} <span className="text-sm font-semibold text-zinc-400">MXN</span>
+                  <div className="text-3xl sm:text-4xl font-black text-white">
+                    ${totalRevenue.toLocaleString()} <span className="text-xs font-semibold text-zinc-400">MXN</span>
                   </div>
                   <p className="text-xs text-emerald-400 font-semibold mt-1">
-                    ✓ 100% cobrado ({orders.length} pedidos)
+                    ✓ 100% cobrado ({completedOrdersCount} entregados)
                   </p>
                 </div>
               </div>
 
-              {/* Card 4: Catálogo Artesanal */}
+              {/* Card 4: Catálogo & Stock */}
               <div className="bg-[#121218] border border-zinc-800/80 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    CATÁLOGO ARTESANAL
+                    STOCK CATÁLOGO
                   </span>
                   <div className="w-8 h-8 rounded-full bg-amber-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
                     <Box className="w-4 h-4" />
                   </div>
                 </div>
                 <div>
-                  <div className="text-4xl font-black text-white">{products.length}</div>
+                  <div className="text-3xl sm:text-4xl font-black text-white">{totalProductsStock} <span className="text-xs text-zinc-400 font-normal">pzas</span></div>
                   <p className="text-xs text-zinc-400 font-medium mt-1">
-                    Variedades con stock inicial activo
+                    {products.length} variedades con stock activo
                   </p>
                 </div>
               </div>
@@ -733,11 +1027,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Módulo ERP & Fabricación BadGommys
                     </h3>
                     <span className="bg-emerald-950 text-emerald-400 border border-emerald-800/60 text-[10px] font-black px-2.5 py-0.5 rounded-full">
-                      Nativo + Conectores Multi-ERP
+                      Sincronizado en Tiempo Real
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    <span className="text-emerald-400 font-semibold">✓ Todos los insumos en nivel óptimo</span> • 2 lote(s) en producción • 4 ERPs sincronizados (Odoo, SAT, Alegra)
+                    <span className="text-emerald-400 font-semibold">${totalInsumosInventoryValue.toLocaleString()} MXN en materias primas</span> • {erpBatches.length} lote(s) registrados • {totalProductsStock} unidades de producto terminado
                   </p>
                 </div>
               </div>
@@ -829,6 +1123,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             orders={orders}
             onUpdateCustomer={onUpdateCustomer}
             onAddCustomer={onAddCustomer}
+            onDeleteCustomer={onDeleteCustomer}
             onSelectCustomerForMessage={(c) => {
               setActiveTab('campanas');
               setCampaignSubject(`Atención personalizada: ${c.name}`);
@@ -850,15 +1145,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'erp' && (
           <AdminErpTab
             insumos={erpInsumos}
-            recipes={INITIAL_ERP_RECIPES}
+            recipes={erpRecipes}
             batches={erpBatches}
             purchaseOrders={erpPurchaseOrders}
             products={products}
             onUpdateInsumo={handleUpdateInsumo}
             onAddInsumo={handleAddInsumo}
+            onDeleteInsumo={handleDeleteInsumo}
+            onUpdateRecipe={handleUpdateRecipe}
+            onUpdateBatch={handleUpdateBatch}
+            onDeleteBatch={handleDeleteBatch}
             onUpdateBatchStatus={handleUpdateBatchStatus}
             onAddBatch={handleAddBatch}
+            onUpdatePurchaseOrder={handleUpdatePurchaseOrder}
+            onDeletePurchaseOrder={handleDeletePurchaseOrder}
             onMarkPurchaseOrderReceived={handleMarkPurchaseOrderReceived}
+            onAddPurchaseOrder={handleAddPurchaseOrder}
+            onNavigateToOdoo={() => setActiveTab('odoo')}
           />
         )}
 
@@ -871,6 +1174,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onUpdateOrderStatus={onUpdateOrderStatus}
             onConfirmPayment={onConfirmPayment}
             onAddOrder={onAddOrder}
+            onUpdateOrder={onUpdateOrder}
+            onDeleteOrder={onDeleteOrder}
           />
         )}
 
@@ -879,6 +1184,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <AdminShipmentsTab
             orders={orders}
             onUpdateOrderStatus={onUpdateOrderStatus}
+            onUpdateOrder={onUpdateOrder}
+            onDeleteOrder={onDeleteOrder}
+            onAddOrder={onAddOrder}
           />
         )}
 
@@ -1244,6 +1552,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             orders={orders}
             products={products}
             customers={customers}
+            insumos={erpInsumos}
+          />
+        )}
+
+        {/* VIEW 11: INTEGRACIÓN ODOO SCM & ERP (API, STOCK & PEDIDOS) */}
+        {activeTab === 'odoo' && (
+          <AdminOdooTab
+            products={products}
+            orders={orders}
+            insumos={erpInsumos}
+            batches={erpBatches}
+            purchaseOrders={erpPurchaseOrders}
+            onUpdateProductStock={(productId, newStock) => {
+              const target = products.find(p => p.id === productId);
+              if (target && onUpdateProduct) {
+                onUpdateProduct({ ...target, stock: newStock });
+              }
+            }}
           />
         )}
 
@@ -1312,6 +1638,54 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button type="submit" className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg cursor-pointer">Guardar Cambios</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmación: Reiniciar Todo a 0 */}
+      {showResetZeroModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#14141c] border border-rose-500/40 rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative space-y-5 animate-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-black text-white">¿Reiniciar Todo a 0?</h3>
+              <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
+                Esta acción restablecerá a <strong className="text-rose-400">cero (0)</strong> las ventas, pedidos, existencias de catálogo y materias primas del ERP. Ideal para iniciar operaciones reales en limpio.
+              </p>
+            </div>
+
+            <div className="bg-[#101016] border border-zinc-800/80 rounded-2xl p-3.5 text-xs text-zinc-300 space-y-2">
+              <div className="flex items-center gap-2 text-rose-400 font-bold">
+                <span>⚠️ Se pondrán en 0:</span>
+              </div>
+              <ul className="space-y-1.5 text-zinc-400 pl-4 list-disc text-[11px] sm:text-xs">
+                <li><strong className="text-zinc-200">Ventas Cobradas:</strong> $0 MXN y 0 pedidos</li>
+                <li><strong className="text-zinc-200">Inventario de Catálogo:</strong> 0 unidades disponibles</li>
+                <li><strong className="text-zinc-200">Materias Primas & ERP:</strong> 0 stock en insumos y 0 lotes</li>
+                <li><strong className="text-zinc-200">Historial CRM:</strong> 0 compras y 0 puntos acumulados</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetZeroModal(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmResetZero}
+                className="flex-1 px-4 py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 shadow-lg shadow-rose-600/30 transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Sí, reiniciar todo a 0</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -102,12 +102,12 @@ Uno de nuestros asesores comerciales se pondrá en contacto contigo a tu teléfo
     text.includes('tienda') || 
     text.includes('taller') || 
     text.includes('recoger') || 
-    text.includes('roma') || 
-    text.includes('condesa')
+    text.includes('naranjos') || 
+    text.includes('veracruz')
   ) {
-    return `¡Hola ${firstName}! 📍 Nuestro taller central y punto de entrega oficial se encuentra en la zona de Roma Norte / Cuauhtémoc en la Ciudad de México.
+    return `¡Hola ${firstName}! 📍 Nuestro taller central y punto de entrega oficial se encuentra en **Naranjos, Amatlan, Veracruz**.
 
-Puedes elegir la opción de "Entrega Express a Domicilio" en el carrito o bien solicitar "Retiro en Taller Oficial" para pasar por tu pedido recién escarchado sin costo de envío. ¡Estaremos encantados de recibirte! 🏠🍬`;
+Puedes elegir la opción de "Entrega a Domicilio" en el carrito o bien solicitar "Retiro en Tienda Oficial" para pasar por tu pedido recién escarchado sin costo de envío. ¡Estaremos encantados de recibirte! 🏠🍬`;
   }
 
   // 6. Respuesta por defecto cordial y orientada a servicio

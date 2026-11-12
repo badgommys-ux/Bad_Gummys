@@ -30,6 +30,13 @@ import {
   INITIAL_CUSTOMERS as initialCustomers, 
   INITIAL_MESSAGES as initialMessages 
 } from './data/initialData';
+import { 
+  saveUserAvatar, 
+  getSavedUserAvatar, 
+  getSavedAdminProfile, 
+  saveAdminProfile 
+} from './utils/userStorage';
+import { getOdooConfig, exportOrderToOdoo } from './utils/odooService';
 import { CheckCircle2, ShoppingBag, ShieldAlert, ArrowRight } from 'lucide-react';
 
 const STARTUP_DATA_VERSION = 'v4_high_commercial';
@@ -61,7 +68,16 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('badgommys_user');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const user = JSON.parse(saved) as User;
+      if (user.role === 'admin') {
+        const adminProfile = getSavedAdminProfile();
+        return { ...user, avatar: adminProfile.avatar || user.avatar };
+      } else if (user.email) {
+        const cachedAvatar = getSavedUserAvatar(user.email);
+        return { ...user, avatar: cachedAvatar || user.avatar };
+      }
+      return user;
     } catch {
       return null;
     }
@@ -125,33 +141,57 @@ export default function App() {
   const [placedOrderCelebration, setPlacedOrderCelebration] = useState<Order | null>(null);
   const [userProfileTab, setUserProfileTab] = useState<'orders' | 'tracking' | 'messages' | 'emails' | 'settings'>('orders');
 
-  // Sync with LocalStorage
+  // Sync with LocalStorage with safety checks against quota limits
   useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('badgommys_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('badgommys_user');
+    try {
+      if (currentUser) {
+        localStorage.setItem('badgommys_user', JSON.stringify(currentUser));
+      } else {
+        localStorage.removeItem('badgommys_user');
+      }
+    } catch (e) {
+      console.warn('LocalStorage error on currentUser sync:', e);
     }
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('badgommys_cart', JSON.stringify(cart));
+    try {
+      localStorage.setItem('badgommys_cart', JSON.stringify(cart));
+    } catch (e) {
+      console.warn('LocalStorage error on cart sync:', e);
+    }
   }, [cart]);
 
   useEffect(() => {
-    localStorage.setItem('badgommys_products', JSON.stringify(products));
+    try {
+      localStorage.setItem('badgommys_products', JSON.stringify(products));
+    } catch (e) {
+      console.warn('LocalStorage error on products sync:', e);
+    }
   }, [products]);
 
   useEffect(() => {
-    localStorage.setItem('badgommys_orders', JSON.stringify(orders));
+    try {
+      localStorage.setItem('badgommys_orders', JSON.stringify(orders));
+    } catch (e) {
+      console.warn('LocalStorage error on orders sync:', e);
+    }
   }, [orders]);
 
   useEffect(() => {
-    localStorage.setItem('badgommys_customers', JSON.stringify(customers));
+    try {
+      localStorage.setItem('badgommys_customers', JSON.stringify(customers));
+    } catch (e) {
+      console.warn('LocalStorage error on customers sync:', e);
+    }
   }, [customers]);
 
   useEffect(() => {
-    localStorage.setItem('badgommys_messages', JSON.stringify(messages));
+    try {
+      localStorage.setItem('badgommys_messages', JSON.stringify(messages));
+    } catch (e) {
+      console.warn('LocalStorage error on messages sync:', e);
+    }
   }, [messages]);
 
   // Scroll to top on page change
@@ -215,15 +255,21 @@ export default function App() {
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     if (user.role === 'customer') {
-      // If customer is not yet in customers list, register them
+      if (user.avatar) {
+        saveUserAvatar(user.email, user.avatar);
+      }
       setCustomers((prev) => {
-        if (prev.some((c) => c.email.toLowerCase() === user.email.toLowerCase())) {
-          return prev;
+        const index = prev.findIndex((c) => c.email.toLowerCase() === user.email.toLowerCase());
+        if (index >= 0) {
+          const next = [...prev];
+          next[index] = { ...prev[index], ...user };
+          return next;
         }
         return [...prev, user];
       });
       showToast(`¡Bienvenido/a, ${user.name}!`);
     } else if (user.role === 'admin') {
+      saveAdminProfile(user);
       showToast('Acceso de Administrador Autorizado.');
       setCurrentPage('admin');
     }
@@ -237,9 +283,22 @@ export default function App() {
 
   const handleUpdateUser = (updatedUser: User) => {
     setCurrentUser(updatedUser);
-    setCustomers((prev) =>
-      prev.map((c) => (c.email === updatedUser.email ? updatedUser : c))
-    );
+    if (updatedUser.role === 'admin') {
+      saveAdminProfile(updatedUser);
+    } else {
+      if (updatedUser.avatar) {
+        saveUserAvatar(updatedUser.email, updatedUser.avatar);
+      }
+      setCustomers((prev) => {
+        const index = prev.findIndex((c) => c.email.toLowerCase() === updatedUser.email.toLowerCase());
+        if (index >= 0) {
+          const next = [...prev];
+          next[index] = { ...prev[index], ...updatedUser };
+          return next;
+        }
+        return [...prev, updatedUser];
+      });
+    }
     showToast('Perfil actualizado correctamente.');
   };
 
@@ -300,6 +359,85 @@ export default function App() {
     };
 
     setOrders((prev) => [newOrder, ...prev]);
+
+    // Deduct inventory stock of purchased products in real time
+    if (newOrder.items && newOrder.items.length > 0) {
+      setProducts((prev) => {
+        return prev.map((p) => {
+          const orderedItem = newOrder.items.find((item) => item.product.id === p.id);
+          if (orderedItem) {
+            return {
+              ...p,
+              stock: Math.max(0, p.stock - orderedItem.quantity),
+            };
+          }
+          return p;
+        });
+      });
+    }
+
+    // Automatically update or register customer in CRM with order and spend metrics
+    const emailKey = (newOrder.customerEmail || '').trim().toLowerCase();
+    setCustomers((prev) => {
+      const existing = prev.find((c) => c.email.trim().toLowerCase() === emailKey);
+      if (existing) {
+        return prev.map((c) => {
+          if (c.email.trim().toLowerCase() !== emailKey) return c;
+          const newOrders = (c.totalOrders || 0) + 1;
+          const newSpent = (c.totalSpent || 0) + newOrder.total;
+          return {
+            ...c,
+            totalOrders: newOrders,
+            totalSpent: newSpent,
+            loyaltyPoints: (c.loyaltyPoints || 0) + Math.round(newOrder.total * 0.1),
+            lastPurchaseDate: new Date().toISOString().split('T')[0],
+            crmTag: newOrders >= 3 || newSpent >= 600 ? 'VIP' : 'Frecuente',
+          };
+        });
+      }
+
+      // New customer automatically created in CRM
+      const newCustomer: User = {
+        id: `cust-${Date.now()}`,
+        name: newOrder.customerName || 'Cliente',
+        email: emailKey,
+        phone: newOrder.customerPhone || '55 1234 5678',
+        address: newOrder.shippingAddress || 'Naranjos, Amatlan, Veracruz',
+        role: 'customer',
+        registeredAt: new Date().toISOString().split('T')[0],
+        totalOrders: 1,
+        totalSpent: newOrder.total,
+        loyaltyPoints: Math.round(newOrder.total * 0.1),
+        crmTag: 'Nuevo',
+        lastPurchaseDate: new Date().toISOString().split('T')[0],
+        notes: `Cliente registrado automáticamente por compra online (Pedido #${newOrder.id}).`,
+      };
+      return [newCustomer, ...prev];
+    });
+
+    // Update currentUser if active
+    if (currentUser && currentUser.email.trim().toLowerCase() === emailKey) {
+      setCurrentUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          totalOrders: (prev.totalOrders || 0) + 1,
+        };
+      });
+    }
+
+    // Automatically sync new order with Odoo SCM if enabled
+    try {
+      const odooCfg = getOdooConfig();
+      if (odooCfg.connected && odooCfg.autoSyncOrders) {
+        exportOrderToOdoo(newOrder, odooCfg).catch((err) => {
+          console.warn('[Odoo Auto-Sync] Sincronización en segundo plano:', err);
+        });
+      }
+    } catch (e) {
+      // safe fallback
+    }
+
     setCart([]); // Clear cart upon successful order
     return newOrder;
   };
@@ -370,6 +508,43 @@ export default function App() {
     showToast('✅ Plataforma y datos restablecidos al estado inicial de lanzamiento.');
   };
 
+  const handleResetAllToZero = () => {
+    // 1. Clear orders & messages
+    setOrders([]);
+    localStorage.setItem('badgommys_orders', JSON.stringify([]));
+    setMessages([]);
+    localStorage.setItem('badgommys_messages', JSON.stringify([]));
+
+    // 2. Set all products stock to 0
+    setProducts((prev) => {
+      const zeroStockProducts = prev.map((p) => ({ ...p, stock: 0 }));
+      localStorage.setItem('badgommys_products', JSON.stringify(zeroStockProducts));
+      return zeroStockProducts;
+    });
+
+    // 3. Reset customers sales metrics to 0
+    setCustomers((prev) => {
+      const zeroMetricsCust = prev.map((c) => ({
+        ...c,
+        totalOrders: 0,
+        totalSpent: 0,
+        loyaltyPoints: 0,
+        crmTag: 'Nuevo' as const,
+        lastPurchaseDate: undefined,
+      }));
+      localStorage.setItem('badgommys_customers', JSON.stringify(zeroMetricsCust));
+      return zeroMetricsCust;
+    });
+
+    // 4. Clear cart & ERP cache
+    setCart([]);
+    localStorage.removeItem('badgommys_erp_batches');
+    localStorage.removeItem('badgommys_erp_purchase_orders');
+    localStorage.removeItem('badgommys_erp_pos');
+
+    showToast('⚡ Todo se ha reiniciado a 0: ventas, pedidos, stock y registros en cero.');
+  };
+
   const handleDeleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
     showToast('Producto eliminado del catálogo.');
@@ -388,9 +563,24 @@ export default function App() {
     showToast(`Cliente "${updatedCustomer.name}" actualizado en CRM.`);
   };
 
+  const handleDeleteCustomer = (id: string) => {
+    setCustomers((prev) => prev.filter((c) => c.id !== id));
+    showToast('Cliente eliminado del CRM.');
+  };
+
   const handleAddCustomer = (newCustomer: User) => {
     setCustomers((prev) => [newCustomer, ...prev]);
     showToast(`Cliente "${newCustomer.name}" registrado en la plataforma.`);
+  };
+
+  const handleUpdateOrder = (updatedOrder: Order) => {
+    setOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o)));
+    showToast(`Orden #${updatedOrder.id} actualizada correctamente.`);
+  };
+
+  const handleDeleteOrder = (id: string) => {
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+    showToast('Orden eliminada del sistema.');
   };
 
   const handleAddOrder = (newOrder: Order) => {
@@ -401,21 +591,43 @@ export default function App() {
         prev.map((p) => (p.id === item.product.id ? { ...p, stock: Math.max(0, p.stock - item.quantity) } : p))
       );
     });
-    // Actualizar gasto y pedidos del cliente si existe
-    setCustomers((prev) =>
-      prev.map((c) =>
-        c.email.toLowerCase() === newOrder.customerEmail.toLowerCase()
-          ? {
-              ...c,
-              totalOrders: (c.totalOrders || 0) + 1,
-              totalSpent: (c.totalSpent || 0) + newOrder.total,
-              loyaltyPoints: (c.loyaltyPoints || 0) + Math.round(newOrder.total * 0.1),
-              lastPurchaseDate: new Date().toISOString().split('T')[0],
-              crmTag: ((c.totalOrders || 0) + 1 >= 3) ? 'VIP' : 'Frecuente',
-            }
-          : c
-      )
-    );
+    // Actualizar gasto y pedidos del cliente si existe o crear nuevo registro en CRM
+    const customerEmailKey = (newOrder.customerEmail || '').trim().toLowerCase();
+    setCustomers((prev) => {
+      const exists = prev.some((c) => c.email.trim().toLowerCase() === customerEmailKey);
+      if (exists) {
+        return prev.map((c) =>
+          c.email.trim().toLowerCase() === customerEmailKey
+            ? {
+                ...c,
+                totalOrders: (c.totalOrders || 0) + 1,
+                totalSpent: (c.totalSpent || 0) + newOrder.total,
+                loyaltyPoints: (c.loyaltyPoints || 0) + Math.round(newOrder.total * 0.1),
+                lastPurchaseDate: new Date().toISOString().split('T')[0],
+                crmTag: ((c.totalOrders || 0) + 1 >= 3 || (c.totalSpent || 0) + newOrder.total >= 600) ? 'VIP' : 'Frecuente',
+              }
+            : c
+        );
+      }
+
+      const newCust: User = {
+        id: `cust-${Date.now()}`,
+        name: newOrder.customerName || 'Cliente Mostrador',
+        email: customerEmailKey || 'mostrador@badgommys.com',
+        phone: newOrder.customerPhone || '55 1234 5678',
+        address: newOrder.shippingAddress || 'Mostrador Naranjos, Veracruz',
+        role: 'customer',
+        registeredAt: new Date().toISOString().split('T')[0],
+        totalOrders: 1,
+        totalSpent: newOrder.total,
+        loyaltyPoints: Math.round(newOrder.total * 0.1),
+        crmTag: 'Nuevo',
+        lastPurchaseDate: new Date().toISOString().split('T')[0],
+        notes: `Cliente registrado por venta mostrador/POS #${newOrder.id}`,
+      };
+      return [newCust, ...prev];
+    });
+
     showToast(`Venta / Pedido #${newOrder.id} registrado y reflejado en el sistema.`);
   };
 
@@ -423,11 +635,27 @@ export default function App() {
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== orderId) return o;
+        
+        // Update timeline status in real time for customer tracking
+        const updatedTimeline = (o.timeline || []).map((step, idx) => {
+          if (status === 'En camino') {
+            if (idx <= 2) return { ...step, completed: true, current: idx === 2 };
+            return { ...step, completed: false, current: false };
+          } else if (status === 'Entregado') {
+            return { ...step, completed: true, current: idx === 3 };
+          } else if (status === 'En preparación') {
+            if (idx <= 1) return { ...step, completed: true, current: idx === 1 };
+            return { ...step, completed: false, current: false };
+          }
+          return step;
+        });
+
         return {
           ...o,
           status,
           trackingNumber: trackingNumber || o.trackingNumber,
           courierName: courierName || o.courierName,
+          timeline: updatedTimeline,
         };
       })
     );
@@ -553,6 +781,7 @@ export default function App() {
               onRequireAuth={() => handleOpenAuth('customer')}
               onCreateOrder={handleCreateOrder}
               onOrderCompleted={handleOrderCompleted}
+              onUpdateUser={handleUpdateUser}
             />
             <Footer onNavigate={handleNavigate} />
           </div>
@@ -605,16 +834,22 @@ export default function App() {
                 orders={orders}
                 customers={customers}
                 messages={messages}
+                currentUser={currentUser}
+                onUpdateUser={handleUpdateUser}
                 onAddProduct={handleAddProduct}
                 onUpdateProduct={handleUpdateProduct}
                 onDeleteProduct={handleDeleteProduct}
                 onAddCustomer={handleAddCustomer}
                 onUpdateCustomer={handleUpdateCustomer}
+                onDeleteCustomer={handleDeleteCustomer}
                 onAddOrder={handleAddOrder}
+                onUpdateOrder={handleUpdateOrder}
+                onDeleteOrder={handleDeleteOrder}
                 onUpdateOrderStatus={handleUpdateOrderStatus}
                 onConfirmPayment={handleConfirmPayment}
                 onReplyMessage={handleReplyMessage}
                 onResetStartupData={handleResetStartupData}
+                onResetAllToZero={handleResetAllToZero}
                 onExitAdmin={() => handleNavigate('inicio')}
               />
             ) : (
@@ -645,6 +880,7 @@ export default function App() {
       <AuthModal
         isOpen={isAuthModalOpen}
         defaultTab={authDefaultTab}
+        customers={customers}
         onClose={() => setIsAuthModalOpen(false)}
         onLoginSuccess={handleLoginSuccess}
       />
@@ -725,6 +961,18 @@ export default function App() {
             </div>
 
             <div className="space-y-2.5">
+              {/* WhatsApp direct notification */}
+              <a
+                href={`https://wa.me/527681046796?text=${encodeURIComponent(
+                  `¡Hola BadGommys! 🌶️ Acabo de realizar el pedido *#${placedOrderCelebration.id}* en la página web.\n\n• Nombre: ${placedOrderCelebration.customerName}\n• Total: $${placedOrderCelebration.total} MXN\n• Método: ${placedOrderCelebration.paymentMethod}\n• Entrega en: ${placedOrderCelebration.shippingAddress}\n\n¿Me confirman de recibido por favor? ¡Muchas gracias!`
+                )}`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-emerald-600/30 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>💬 Enviar Confirmación por WhatsApp al Negocio</span>
+              </a>
+
               <button
                 onClick={() => {
                   setPlacedOrderCelebration(null);
@@ -741,7 +989,7 @@ export default function App() {
                   setPlacedOrderCelebration(null);
                   handleNavigate('productos');
                 }}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-3 rounded-2xl font-semibold text-xs transition-colors cursor-pointer"
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-2.5 rounded-2xl font-semibold text-xs transition-colors cursor-pointer"
               >
                 Seguir Explorando Gomitas
               </button>

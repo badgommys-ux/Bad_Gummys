@@ -16,7 +16,8 @@ import {
   Store,
   Phone,
   MapPin,
-  Tag
+  Tag,
+  Trash2
 } from 'lucide-react';
 
 interface AdminOrdersTabProps {
@@ -26,6 +27,8 @@ interface AdminOrdersTabProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, trackingNumber?: string, courierName?: string) => void;
   onConfirmPayment: (orderId: string, status: PaymentStatus) => void;
   onAddOrder?: (order: Order) => void;
+  onUpdateOrder?: (order: Order) => void;
+  onDeleteOrder?: (id: string) => void;
 }
 
 export const AdminOrdersTab: React.FC<AdminOrdersTabProps> = ({
@@ -35,6 +38,8 @@ export const AdminOrdersTab: React.FC<AdminOrdersTabProps> = ({
   onUpdateOrderStatus,
   onConfirmPayment,
   onAddOrder,
+  onUpdateOrder,
+  onDeleteOrder,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
@@ -47,6 +52,10 @@ export const AdminOrdersTab: React.FC<AdminOrdersTabProps> = ({
   const [manageCourier, setManageCourier] = useState('');
   const [manageCourierPhone, setManageCourierPhone] = useState('');
   const [manageTracking, setManageTracking] = useState('');
+  const [manageCustomerName, setManageCustomerName] = useState('');
+  const [manageCustomerPhone, setManageCustomerPhone] = useState('');
+  const [manageShippingAddress, setManageShippingAddress] = useState('');
+  const [manageTotal, setManageTotal] = useState(0);
   const [manageNotes, setManageNotes] = useState('');
 
   // POS / Manual Counter Order Modal
@@ -54,7 +63,7 @@ export const AdminOrdersTab: React.FC<AdminOrdersTabProps> = ({
   const [posCustomerName, setPosCustomerName] = useState('Cliente Mostrador');
   const [posCustomerEmail, setPosCustomerEmail] = useState('mostrador@badgommys.com');
   const [posCustomerPhone, setPosCustomerPhone] = useState('55 1234 5678');
-  const [posAddress, setPosAddress] = useState('Entrega Inmediata en Mostrador Roma Norte');
+  const [posAddress, setPosAddress] = useState('Entrega Inmediata en Mostrador Naranjos, Veracruz');
   const [posPaymentMethod, setPosPaymentMethod] = useState('Efectivo en Tienda Oficial');
   const [posSelectedItems, setPosSelectedItems] = useState<Array<{ product: Product; quantity: number }>>([
     { product: products[0] || ({} as Product), quantity: 2 },
@@ -67,6 +76,10 @@ export const AdminOrdersTab: React.FC<AdminOrdersTabProps> = ({
     setManageCourier(o.courierName || '');
     setManageCourierPhone(o.courierPhone || '55 9876 5432');
     setManageTracking(o.trackingNumber || '');
+    setManageCustomerName(o.customerName || '');
+    setManageCustomerPhone(o.customerPhone || '');
+    setManageShippingAddress(o.shippingAddress || '');
+    setManageTotal(o.total || 0);
     setManageNotes(o.deliveryNotes || '');
   };
 
@@ -74,15 +87,54 @@ export const AdminOrdersTab: React.FC<AdminOrdersTabProps> = ({
     e.preventDefault();
     if (!selectedOrderToManage) return;
 
-    onUpdateOrderStatus(
-      selectedOrderToManage.id,
-      manageStatus,
-      manageTracking.trim(),
-      manageCourier.trim()
-    );
+    if (onUpdateOrder) {
+      const updatedTimeline = (selectedOrderToManage.timeline || []).map((step, idx) => {
+        if (manageStatus === 'En camino') {
+          if (idx <= 2) return { ...step, completed: true, current: idx === 2 };
+          return { ...step, completed: false, current: false };
+        } else if (manageStatus === 'Entregado') {
+          return { ...step, completed: true, current: idx === 3 };
+        } else if (manageStatus === 'En preparación') {
+          if (idx <= 1) return { ...step, completed: true, current: idx === 1 };
+          return { ...step, completed: false, current: false };
+        }
+        return step;
+      });
 
-    onConfirmPayment(selectedOrderToManage.id, managePaymentStatus);
+      const updated: Order = {
+        ...selectedOrderToManage,
+        customerName: manageCustomerName.trim(),
+        customerPhone: manageCustomerPhone.trim(),
+        shippingAddress: manageShippingAddress.trim(),
+        total: Number(manageTotal),
+        status: manageStatus,
+        paymentStatus: managePaymentStatus,
+        trackingNumber: manageTracking.trim(),
+        courierName: manageCourier.trim(),
+        courierPhone: manageCourierPhone.trim(),
+        deliveryNotes: manageNotes.trim(),
+        timeline: updatedTimeline,
+      };
+
+      onUpdateOrder(updated);
+    } else {
+      onUpdateOrderStatus(
+        selectedOrderToManage.id,
+        manageStatus,
+        manageTracking.trim(),
+        manageCourier.trim()
+      );
+      onConfirmPayment(selectedOrderToManage.id, managePaymentStatus);
+    }
+
     setSelectedOrderToManage(null);
+  };
+
+  const handleDeleteOrderConfirm = (orderId: string) => {
+    if (window.confirm(`¿Deseas eliminar permanentemente la orden #${orderId}?`)) {
+      onDeleteOrder?.(orderId);
+      setSelectedOrderToManage(null);
+    }
   };
 
   // Add Item in POS modal
@@ -419,27 +471,84 @@ export const AdminOrdersTab: React.FC<AdminOrdersTabProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-zinc-400 mb-1 font-bold">Dirección de Entrega</label>
-                <p className="p-2.5 bg-[#181824] rounded-xl text-zinc-300 border border-zinc-800">
-                  {selectedOrderToManage.shippingAddress}
-                </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-bold">Nombre del Cliente</label>
+                  <input
+                    type="text"
+                    value={manageCustomerName}
+                    onChange={(e) => setManageCustomerName(e.target.value)}
+                    className="w-full bg-[#1c1c28] border border-zinc-700 rounded-xl p-2.5 text-white font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-bold">Teléfono del Cliente</label>
+                  <input
+                    type="text"
+                    value={manageCustomerPhone}
+                    onChange={(e) => setManageCustomerPhone(e.target.value)}
+                    className="w-full bg-[#1c1c28] border border-zinc-700 rounded-xl p-2.5 text-white font-medium"
+                  />
+                </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div>
+                <label className="block text-zinc-400 mb-1 font-bold">Dirección de Entrega</label>
+                <input
+                  type="text"
+                  value={manageShippingAddress}
+                  onChange={(e) => setManageShippingAddress(e.target.value)}
+                  className="w-full bg-[#1c1c28] border border-zinc-700 rounded-xl p-2.5 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-bold">Total del Pedido ($ MXN)</label>
+                  <input
+                    type="number"
+                    value={manageTotal}
+                    onChange={(e) => setManageTotal(Number(e.target.value))}
+                    className="w-full bg-[#1c1c28] border border-zinc-700 rounded-xl p-2.5 text-emerald-400 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-bold">Notas de Entrega / Instrucciones</label>
+                  <input
+                    type="text"
+                    value={manageNotes}
+                    onChange={(e) => setManageNotes(e.target.value)}
+                    placeholder="Instrucciones especiales..."
+                    className="w-full bg-[#1c1c28] border border-zinc-700 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center gap-2 pt-2 border-t border-zinc-800">
                 <button
                   type="button"
-                  onClick={() => setSelectedOrderToManage(null)}
-                  className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-xl cursor-pointer"
+                  onClick={() => handleDeleteOrderConfirm(selectedOrderToManage.id)}
+                  className="px-3.5 py-2 bg-rose-950/40 hover:bg-rose-900 border border-rose-800/40 text-rose-400 hover:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  Cancelar
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar Pedido</span>
                 </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg cursor-pointer"
-                >
-                  Guardar y Sincronizar
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrderToManage(null)}
+                    className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg cursor-pointer"
+                  >
+                    Guardar y Sincronizar
+                  </button>
+                </div>
               </div>
             </form>
           </div>

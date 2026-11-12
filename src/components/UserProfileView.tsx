@@ -28,9 +28,26 @@ import {
   Check,
   Camera,
   Upload,
-  Trash2
+  Trash2,
+  Home,
+  Building2,
+  Flame,
+  Calendar,
+  FileText,
+  PhoneCall,
+  Gift,
+  X,
+  Image as ImageIcon,
+  Link as LinkIcon
 } from 'lucide-react';
 import { badgommysLogo } from '../assets';
+import { 
+  saveUserAvatar, 
+  saveAdminProfile, 
+  compressAvatarImage, 
+  BADGOMMYS_PRESET_AVATARS,
+  DEFAULT_CUSTOMER_AVATAR
+} from '../utils/userStorage';
 
 interface UserProfileViewProps {
   currentUser: User;
@@ -181,48 +198,215 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     };
   }, [currentUser]);
 
-  // Editable settings form
-  const [editName, setEditName] = useState(currentUser.name);
+  // Editable settings form - Personal & Contact
+  const [editName, setEditName] = useState(currentUser.name || '');
   const [editPhone, setEditPhone] = useState(currentUser.phone || '');
-  const [editAddress, setEditAddress] = useState(currentUser.address || '');
+  const [editSecondaryPhone, setEditSecondaryPhone] = useState(currentUser.secondaryPhone || '');
   const [editAvatar, setEditAvatar] = useState(currentUser.avatar || '');
+  const [editBirthDate, setEditBirthDate] = useState(currentUser.birthDate || '');
+  const [editRfc, setEditRfc] = useState(currentUser.rfc || '');
+  const [editRequiresInvoice, setEditRequiresInvoice] = useState(currentUser.requiresInvoice || false);
+
+  // Editable settings form - Structured Delivery Address
+  const [editAddress, setEditAddress] = useState(currentUser.address || '');
+  const [editStreet, setEditStreet] = useState(currentUser.streetAndNumber || '');
+  const [editInteriorNumber, setEditInteriorNumber] = useState(currentUser.interiorNumber || '');
+  const [editCrossStreets, setEditCrossStreets] = useState(currentUser.crossStreets || '');
+  const [editColony, setEditColony] = useState(currentUser.colony || '');
+  const [editPostalCode, setEditPostalCode] = useState(currentUser.postalCode || '');
+  const [editCity, setEditCity] = useState(currentUser.city || '');
+  const [editState, setEditState] = useState(currentUser.state || '');
+  const [editReferences, setEditReferences] = useState(currentUser.deliveryReferences || '');
+  const [editAddressType, setEditAddressType] = useState<'Casa' | 'Oficina' | 'Taller' | 'Otro'>(
+    currentUser.addressType || 'Casa'
+  );
+  const [editPreferredSchedule, setEditPreferredSchedule] = useState(
+    currentUser.preferredDeliverySchedule || 'Cualquier horario'
+  );
+  const [editSpecialInstructions, setEditSpecialInstructions] = useState(
+    currentUser.specialInstructions || ''
+  );
+
+  // Editable settings form - Preferences
+  const [editFavoriteSpice, setEditFavoriteSpice] = useState(
+    currentUser.favoriteSpiceLevel || '🌶️🌶️ Clásico Chamoy Especial'
+  );
+  const [editFavoriteGummy, setEditFavoriteGummy] = useState(
+    currentUser.favoriteGummy || 'Mangos Enchilados Artesanales'
+  );
+  const [editWantsSamples, setEditWantsSamples] = useState(
+    currentUser.wantsSurpriseSamples !== false
+  );
+
+  // Avatar Modal and Upload States
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [avatarTab, setAvatarTab] = useState<'upload' | 'presets' | 'url'>('upload');
+  const [avatarUrlInput, setAvatarUrlInput] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
-  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Synchronize state with currentUser whenever props update
+  useEffect(() => {
+    setEditName(currentUser.name || '');
+    setEditPhone(currentUser.phone || '');
+    setEditSecondaryPhone(currentUser.secondaryPhone || '');
+    setEditAvatar(currentUser.avatar || '');
+    setEditBirthDate(currentUser.birthDate || '');
+    setEditRfc(currentUser.rfc || '');
+    setEditRequiresInvoice(currentUser.requiresInvoice || false);
+    setEditAddress(currentUser.address || '');
+    setEditStreet(currentUser.streetAndNumber || '');
+    setEditInteriorNumber(currentUser.interiorNumber || '');
+    setEditCrossStreets(currentUser.crossStreets || '');
+    setEditColony(currentUser.colony || '');
+    setEditPostalCode(currentUser.postalCode || '');
+    setEditCity(currentUser.city || '');
+    setEditState(currentUser.state || '');
+    setEditReferences(currentUser.deliveryReferences || '');
+    setEditAddressType(currentUser.addressType || 'Casa');
+    setEditPreferredSchedule(currentUser.preferredDeliverySchedule || 'Cualquier horario');
+    setEditSpecialInstructions(currentUser.specialInstructions || '');
+    setEditFavoriteSpice(currentUser.favoriteSpiceLevel || '🌶️🌶️ Clásico Chamoy Especial');
+    setEditFavoriteGummy(currentUser.favoriteGummy || 'Mangos Enchilados Artesanales');
+    setEditWantsSamples(currentUser.wantsSurpriseSamples !== false);
+  }, [currentUser]);
+
+  // Robust Avatar Upload Handler
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      // Reemplazo seguro de alert para evitar bloqueo en iframe
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
+
+    setIsUploadingAvatar(true);
+    setAvatarUploadError('');
+
+    try {
+      const base64 = await compressAvatarImage(file, 280, 0.82);
       if (base64) {
         setEditAvatar(base64);
+        if (currentUser.role === 'admin') {
+          saveAdminProfile({ avatar: base64 });
+        } else if (currentUser.email) {
+          saveUserAvatar(currentUser.email, base64);
+        }
         onUpdateUser({
           ...currentUser,
           avatar: base64,
         });
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3500);
+        setIsAvatarModalOpen(false);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('Error procesando imagen de perfil:', err);
+      setAvatarUploadError(err?.message || 'No se pudo procesar la imagen seleccionada.');
+    } finally {
+      setIsUploadingAvatar(false);
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
+  };
+
+  const handleSelectPresetAvatar = (url: string) => {
+    setEditAvatar(url);
+    if (currentUser.role === 'admin') {
+      saveAdminProfile({ avatar: url });
+    } else if (currentUser.email) {
+      saveUserAvatar(currentUser.email, url);
+    }
+    onUpdateUser({
+      ...currentUser,
+      avatar: url,
+    });
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3500);
+    setIsAvatarModalOpen(false);
+  };
+
+  const handleApplyAvatarUrl = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const url = avatarUrlInput.trim();
+    if (!url) return;
+
+    setEditAvatar(url);
+    if (currentUser.role === 'admin') {
+      saveAdminProfile({ avatar: url });
+    } else if (currentUser.email) {
+      saveUserAvatar(currentUser.email, url);
+    }
+    onUpdateUser({
+      ...currentUser,
+      avatar: url,
+    });
+    setAvatarUrlInput('');
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3500);
+    setIsAvatarModalOpen(false);
+  };
+
+  const handleRemoveAvatar = () => {
+    setEditAvatar('');
+    if (currentUser.role === 'admin') {
+      saveAdminProfile({ avatar: '' });
+    } else if (currentUser.email) {
+      saveUserAvatar(currentUser.email, '');
+    }
+    onUpdateUser({ ...currentUser, avatar: '' });
+    setIsAvatarModalOpen(false);
   };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateUser({
+
+    // Construct formatted single line address if structured fields are provided
+    const parts = [
+      (editStreet.trim() ? editStreet.trim() + (editInteriorNumber.trim() ? ` Int. ${editInteriorNumber.trim()}` : '') : ''),
+      editCrossStreets.trim() ? `Entre ${editCrossStreets.trim()}` : '',
+      editColony.trim() ? `Col. ${editColony.trim()}` : '',
+      editCity.trim(),
+      editState.trim(),
+      editPostalCode.trim() ? `C.P. ${editPostalCode.trim()}` : '',
+    ].filter(Boolean);
+    const finalFormattedAddress = parts.length > 0 ? parts.join(', ') : editAddress.trim();
+
+    const updatedUser: User = {
       ...currentUser,
-      name: editName,
-      phone: editPhone,
-      address: editAddress,
+      name: editName.trim() || currentUser.name,
+      phone: editPhone.trim(),
+      secondaryPhone: editSecondaryPhone.trim(),
+      address: finalFormattedAddress,
+      streetAndNumber: editStreet.trim(),
+      interiorNumber: editInteriorNumber.trim(),
+      crossStreets: editCrossStreets.trim(),
+      colony: editColony.trim(),
+      postalCode: editPostalCode.trim(),
+      city: editCity.trim(),
+      state: editState.trim(),
+      deliveryReferences: editReferences.trim(),
+      addressType: editAddressType,
+      preferredDeliverySchedule: editPreferredSchedule,
+      specialInstructions: editSpecialInstructions.trim(),
+      birthDate: editBirthDate.trim(),
+      favoriteSpiceLevel: editFavoriteSpice,
+      favoriteGummy: editFavoriteGummy.trim(),
+      rfc: editRfc.trim().toUpperCase(),
+      requiresInvoice: editRequiresInvoice,
+      wantsSurpriseSamples: editWantsSamples,
       avatar: editAvatar,
-    });
+    };
+
+    if (currentUser.role === 'admin') {
+      saveAdminProfile(updatedUser);
+    } else if (currentUser.email && editAvatar) {
+      saveUserAvatar(currentUser.email, editAvatar);
+    }
+
+    onUpdateUser(updatedUser);
+    setEditAddress(finalFormattedAddress);
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    setTimeout(() => setSaveSuccess(false), 3500);
   };
 
   const getStatusBadge = (status: Order['status']) => {
@@ -276,11 +460,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
         {/* User Profile Header Card */}
         <div className="bg-[#14141c] rounded-3xl border border-zinc-800 p-6 sm:p-8 shadow-2xl mb-10 flex flex-col md:flex-row items-center md:items-start gap-6 relative overflow-hidden">
           
-          {/* Avatar with click-to-upload badge */}
+          {/* Avatar with click-to-open modal badge */}
           <div 
-            onClick={() => avatarFileRef.current?.click()}
+            onClick={() => setIsAvatarModalOpen(true)}
             className="group relative w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden border-2 border-red-500 bg-zinc-800 flex items-center justify-center shrink-0 shadow-[0_0_25px_rgba(239,68,68,0.3)] cursor-pointer hover:border-amber-400 transition-all"
-            title="Haz clic para subir o cambiar tu foto de perfil desde tu dispositivo"
+            title="Haz clic para subir o cambiar tu foto de perfil desde tu dispositivo o elegir un avatar"
           >
             {currentUser.avatar ? (
               <img
@@ -291,9 +475,9 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             ) : (
               <UserIcon className="w-12 h-12 text-zinc-400" />
             )}
-            <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity p-1 text-center">
-              <Camera className="w-6 h-6 text-red-400" />
-              <span className="text-[10px] font-bold mt-1 leading-tight">Subir Foto</span>
+            <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity p-1 text-center">
+              <Camera className="w-6 h-6 text-amber-400" />
+              <span className="text-[10px] font-black mt-1 leading-tight text-white">Cambiar Foto</span>
             </div>
           </div>
 
@@ -1185,151 +1369,720 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
 
         {/* TAB 3: ACCOUNT SETTINGS */}
         {activeTab === 'settings' && (
-          <div className="max-w-2xl bg-[#14141c] rounded-3xl border border-zinc-800 p-6 sm:p-8 shadow-2xl space-y-6">
+          <div className="max-w-3xl bg-[#14141c] rounded-3xl border border-zinc-800 p-6 sm:p-8 shadow-2xl space-y-6">
             <div>
               <h2 className="text-xl sm:text-2xl font-black text-white">
                 Configuración de la Cuenta
               </h2>
               <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-                Actualiza tu información personal, teléfono y dirección habitual de entrega.
+                Actualiza tu información personal, dirección de entrega con referencias para repartidores y preferencias.
               </p>
             </div>
 
             {saveSuccess && (
-              <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 flex items-center gap-3">
+              <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 flex items-center gap-3 animate-in fade-in">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span className="text-xs sm:text-sm font-bold text-emerald-200">
-                  ¡Información actualizada correctamente!
+                  ¡Información y dirección de entrega actualizadas con éxito! Se sincronizará automáticamente en tus pedidos.
                 </span>
               </div>
             )}
 
-            <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Nombre Completo *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full bg-[#1b1b24] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500"
-                />
+            <form onSubmit={handleSaveProfile} className="space-y-6">
+              
+              {/* SECTION 1: DATOS PERSONALES & CONTACTO */}
+              <div className="p-5 bg-[#181824] rounded-2xl border border-zinc-800/80 space-y-4">
+                <div className="flex items-center gap-2 text-red-500 font-bold text-xs uppercase tracking-wider">
+                  <UserIcon className="w-4 h-4" />
+                  <span>1. Información Personal & Contacto</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Nombre Completo *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Tu nombre y apellido"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Correo Electrónico (No modificable)
+                    </label>
+                    <input
+                      type="email"
+                      disabled
+                      value={currentUser.email}
+                      className="w-full bg-[#101016] border border-zinc-800/80 rounded-xl px-4 py-2.5 text-sm text-zinc-500 cursor-not-allowed font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Teléfono Principal / WhatsApp *
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="Ej. 55 1234 5678"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1 flex items-center gap-1.5">
+                      <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Teléfono Secundario / Respaldo (Para Repartidor)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={editSecondaryPhone}
+                      onChange={(e) => setEditSecondaryPhone(e.target.value)}
+                      placeholder="Ej. 55 9876 5432"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Cumpleaños 🎂</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={editBirthDate}
+                      onChange={(e) => setEditBirthDate(e.target.value)}
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-sky-400" />
+                      <span>RFC / Facturación (Opcional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editRfc}
+                      onChange={(e) => setEditRfc(e.target.value.toUpperCase())}
+                      placeholder="XAXX010101000"
+                      maxLength={13}
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 uppercase font-mono"
+                    />
+                  </div>
+
+                  <div className="flex flex-col justify-end">
+                    <label className="flex items-center gap-2 p-2.5 bg-[#121218] border border-zinc-800 rounded-xl cursor-pointer hover:border-zinc-700 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={editRequiresInvoice}
+                        onChange={(e) => setEditRequiresInvoice(e.target.checked)}
+                        className="rounded text-red-600 focus:ring-red-500 bg-zinc-900 border-zinc-700"
+                      />
+                      <span className="text-xs text-zinc-300 font-semibold">
+                        Solicitar Factura Electrónica (CFDI)
+                      </span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Correo Electrónico (No modificable)
-                </label>
-                <input
-                  type="email"
-                  disabled
-                  value={currentUser.email}
-                  className="w-full bg-[#16161f] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-zinc-500 cursor-not-allowed"
-                />
+              {/* SECTION 2: DIRECCIÓN HABITUAL DE ENTREGA (CON DESGLOSE DETALLADO) */}
+              <div className="p-5 bg-[#181824] rounded-2xl border border-zinc-800/80 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sky-400 font-bold text-xs uppercase tracking-wider">
+                    <MapPin className="w-4 h-4" />
+                    <span>2. Dirección Habitual de Entrega (Auto-completado de Pedidos)</span>
+                  </div>
+
+                  {/* Address Type Selector */}
+                  <div className="flex items-center gap-1.5">
+                    {(['Casa', 'Oficina', 'Taller', 'Otro'] as const).map((type) => (
+                      <button
+                        type="button"
+                        key={type}
+                        onClick={() => setEditAddressType(type)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          editAddressType === type
+                            ? 'bg-sky-500 text-white shadow-sm'
+                            : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {type === 'Casa' ? '🏠 Casa' : type === 'Oficina' ? '🏢 Oficina' : type === 'Taller' ? '🏬 Negocio' : '📍 Otro'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-sky-950/20 border border-sky-500/20 rounded-xl text-xs text-sky-300">
+                  💡 <strong>Entrega automática:</strong> Esta dirección se cargará automáticamente cada vez que hagas un pedido desde el carrito, con opción a modificarla si necesitas entregar en otro lugar.
+                </div>
+
+                {/* Street, Ext Number and Int Number */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Calle y Número Exterior *
+                    </label>
+                    <input
+                      type="text"
+                      value={editStreet}
+                      onChange={(e) => setEditStreet(e.target.value)}
+                      placeholder="Ej. Av. Hidalgo #452"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      No. Interior / Depto / Piso
+                    </label>
+                    <input
+                      type="text"
+                      value={editInteriorNumber}
+                      onChange={(e) => setEditInteriorNumber(e.target.value)}
+                      placeholder="Ej. Depto 3B / Piso 2"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Between Streets and Colony */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Entre qué Calles (Cruces para el Repartidor)
+                    </label>
+                    <input
+                      type="text"
+                      value={editCrossStreets}
+                      onChange={(e) => setEditCrossStreets(e.target.value)}
+                      placeholder="Ej. Entre Juárez y 5 de Mayo"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Colonia / Barrio / Fraccionamiento *
+                    </label>
+                    <input
+                      type="text"
+                      value={editColony}
+                      onChange={(e) => setEditColony(e.target.value)}
+                      placeholder="Ej. Col. Centro / Del Valle"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+
+                {/* City, State, CP */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Municipio / Alcaldía / Ciudad *
+                    </label>
+                    <input
+                      type="text"
+                      value={editCity}
+                      onChange={(e) => setEditCity(e.target.value)}
+                      placeholder="Ej. Naranjos Amatlán / Benito Juárez"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Estado de la República *
+                    </label>
+                    <input
+                      type="text"
+                      value={editState}
+                      onChange={(e) => setEditState(e.target.value)}
+                      placeholder="Ej. Veracruz / CDMX / Jalisco"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Código Postal (C.P.)
+                    </label>
+                    <input
+                      type="text"
+                      value={editPostalCode}
+                      onChange={(e) => setEditPostalCode(e.target.value)}
+                      placeholder="Ej. 92300"
+                      maxLength={6}
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Preferred Schedule */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Horario Preferido de Entrega</span>
+                  </label>
+                  <select
+                    value={editPreferredSchedule}
+                    onChange={(e) => setEditPreferredSchedule(e.target.value)}
+                    className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="Cualquier horario">☀️ Cualquier horario del día (Flexible)</option>
+                    <option value="Mañana (9:00 - 14:00)">🌅 Por la mañana (9:00 AM a 2:00 PM)</option>
+                    <option value="Tarde (14:00 - 19:00)">🌇 Por la tarde (2:00 PM a 7:00 PM)</option>
+                    <option value="Noche (19:00 - 22:00)">🌙 Por la noche (7:00 PM a 10:00 PM)</option>
+                    <option value="Fines de semana">📅 Preferentemente fines de semana</option>
+                  </select>
+                </div>
+
+                {/* References for Courier */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Referencias para el Repartidor (Color de fachada, portón, timbre, caseta)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={editReferences}
+                    onChange={(e) => setEditReferences(e.target.value)}
+                    placeholder="Ej. Fachada color crema con portón café, timbre blanco a la derecha o tocar el claxon al llegar"
+                    className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 resize-none"
+                  />
+                </div>
+
+                {/* Special permanent instructions */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                    Instrucciones Especiales Fijas
+                  </label>
+                  <input
+                    type="text"
+                    value={editSpecialInstructions}
+                    onChange={(e) => setEditSpecialInstructions(e.target.value)}
+                    placeholder="Ej. Dejar con vigilancia en caseta, llamar 5 minutos antes, dejar con vecino si no estoy"
+                    className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                {/* Fallback general address field */}
+                {(!editStreet && editAddress) && (
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                      Dirección anterior registrada
+                    </label>
+                    <input
+                      type="text"
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
+                      className="w-full bg-[#121218] border border-zinc-800 rounded-xl px-4 py-2 text-xs text-zinc-400"
+                    />
+                  </div>
+                )}
+
+                {/* Dynamic Preview */}
+                {(editStreet || editAddress) && (
+                  <div className="p-3.5 bg-[#121218] rounded-xl border border-zinc-700/80 space-y-1">
+                    <span className="text-[10px] uppercase font-black text-zinc-400 tracking-wider block">
+                      Vista previa de envío en checkout:
+                    </span>
+                    <p className="text-xs text-zinc-200 font-semibold">
+                      📍 [{editAddressType}] {[editStreet + (editInteriorNumber ? ` Int. ${editInteriorNumber}` : ''), editCrossStreets ? `Entre ${editCrossStreets}` : '', editColony ? `Col. ${editColony}` : '', editCity, editState, editPostalCode ? `C.P. ${editPostalCode}` : ''].filter(Boolean).join(', ') || editAddress}
+                    </p>
+                    {editReferences && (
+                      <p className="text-[11px] text-amber-400/90">
+                        <strong>Referencias:</strong> {editReferences}
+                      </p>
+                    )}
+                    {editSpecialInstructions && (
+                      <p className="text-[11px] text-sky-400">
+                        <strong>Instrucciones:</strong> {editSpecialInstructions}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Teléfono / WhatsApp
-                </label>
-                <input
-                  type="tel"
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  placeholder="55 1234 5678"
-                  className="w-full bg-[#1b1b24] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500"
-                />
+              {/* SECTION 3: PREFERENCIAS BADGOMMYS */}
+              <div className="p-5 bg-[#181824] rounded-2xl border border-zinc-800/80 space-y-4">
+                <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+                  <Flame className="w-4 h-4" />
+                  <span>3. Preferencias de Gomitas & Picante</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Nivel de Picante Favorito
+                    </label>
+                    <select
+                      value={editFavoriteSpice}
+                      onChange={(e) => setEditFavoriteSpice(e.target.value)}
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 font-bold"
+                    >
+                      <option value="🌶️ Suave Dulce Chamoy">🌶️ Suave Dulce Chamoy</option>
+                      <option value="🌶️🌶️ Clásico Chamoy Especial">🌶️🌶️ Clásico Chamoy Especial</option>
+                      <option value="🌶️🌶️🌶️ Bravo Picoso Piquín">🌶️🌶️🌶️ Bravo Picoso Piquín</option>
+                      <option value="🔥🔥🔥 Fuego Extremo Habanero">🔥🔥🔥 Fuego Extremo Habanero</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
+                      Gomitas Favoritas
+                    </label>
+                    <input
+                      type="text"
+                      value={editFavoriteGummy}
+                      onChange={(e) => setEditFavoriteGummy(e.target.value)}
+                      placeholder="Ej. Mango Enchilado, Ositos Picositos, Panditas Chamoy"
+                      className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#121218] border border-zinc-800 rounded-xl">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editWantsSamples}
+                      onChange={(e) => setEditWantsSamples(e.target.checked)}
+                      className="rounded text-amber-500 focus:ring-amber-500 bg-zinc-900 border-zinc-700"
+                    />
+                    <div className="text-xs">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <Gift className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Recibir Muestras Gratis Sorpresa en Mis Pedidos</span>
+                      </span>
+                      <p className="text-zinc-400 text-[11px] mt-0.5">
+                        Al empaquetar tus compras incluiremos pequeñas degustaciones de nuevos sabores de gomitas artesanales.
+                      </p>
+                    </div>
+                  </label>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                  Dirección Habitual de Entrega
-                </label>
-                <textarea
-                  rows={2}
-                  value={editAddress}
-                  onChange={(e) => setEditAddress(e.target.value)}
-                  placeholder="Calle, número, colonia, código postal y referencias"
-                  className="w-full bg-[#1b1b24] border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 resize-none"
-                />
-              </div>
-
-              {/* Foto de Perfil con subida directa de archivos */}
-              <div className="p-4 bg-[#181822] rounded-2xl border border-zinc-700/60 space-y-3">
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-300">
-                  Foto de Perfil del Cliente
-                </label>
+              {/* SECTION 4: FOTO DE PERFIL */}
+              <div className="p-5 bg-[#181824] rounded-2xl border border-zinc-800/80 space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-300">
+                    4. Foto de Perfil del Cliente
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsAvatarModalOpen(true)}
+                    className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Abrir Galería de Avatares</span>
+                  </button>
+                </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4">
-                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-red-500 bg-zinc-900 shrink-0 shadow-md flex items-center justify-center">
+                  <div 
+                    onClick={() => setIsAvatarModalOpen(true)}
+                    className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-red-500 bg-zinc-900 shrink-0 shadow-md flex items-center justify-center cursor-pointer relative group"
+                    title="Haz clic para cambiar foto"
+                  >
                     {editAvatar ? (
-                      <img src={editAvatar} alt="Vista previa" className="w-full h-full object-cover" />
+                      <img src={editAvatar} alt="Vista previa" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                     ) : (
                       <UserIcon className="w-10 h-10 text-zinc-500" />
                     )}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                      <Camera className="w-5 h-5 text-white" />
+                    </div>
                   </div>
 
                   <div className="flex-1 space-y-2 text-center sm:text-left">
                     <p className="text-xs text-zinc-300">
-                      Sube cualquier fotografía desde tu teléfono o computadora (JPG, PNG o WebP).
+                      Sube cualquier fotografía desde tu dispositivo (teléfono o PC), o elige uno de nuestros avatares exclusivos BadGommys.
                     </p>
                     
                     <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-                      <button
-                        type="button"
-                        onClick={() => avatarFileRef.current?.click()}
-                        className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2 rounded-xl flex items-center gap-2 shadow-md shadow-red-600/30 transition-all cursor-pointer hover:scale-[1.02]"
+                      {/* Direct label to native file input */}
+                      <label 
+                        htmlFor="settings-avatar-file-upload"
+                        className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-md shadow-red-600/30 transition-all cursor-pointer hover:scale-[1.02]"
                       >
                         <Upload className="w-3.5 h-3.5" />
                         <span>Subir Foto de mi Dispositivo</span>
+                      </label>
+                      <input
+                        id="settings-avatar-file-upload"
+                        type="file"
+                        onChange={handleAvatarFileUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setIsAvatarModalOpen(true)}
+                        className="bg-zinc-800 hover:bg-zinc-700 text-amber-400 hover:text-amber-300 font-bold text-xs px-3.5 py-2.5 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Ver Avatares BadGommys</span>
                       </button>
 
                       {editAvatar && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditAvatar('');
-                            onUpdateUser({ ...currentUser, avatar: '' });
-                          }}
-                          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                          onClick={handleRemoveAvatar}
+                          className="bg-zinc-800 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-400 text-xs px-3 py-2.5 rounded-xl transition-colors cursor-pointer"
                         >
                           Quitar Foto
                         </button>
                       )}
                     </div>
+
+                    {isUploadingAvatar && (
+                      <p className="text-xs text-amber-400 animate-pulse font-bold">
+                        ⏳ Comprimiendo y guardando foto de perfil...
+                      </p>
+                    )}
+                    {avatarUploadError && (
+                      <p className="text-xs text-red-400 font-bold">
+                        ⚠️ {avatarUploadError}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-zinc-800">
                   <label className="block text-[11px] font-semibold text-zinc-400 mb-1">
-                    O pega el enlace web directo de tu imagen (opcional):
+                    O pega el enlace web directo de tu imagen:
                   </label>
-                  <input
-                    type="url"
-                    value={editAvatar.startsWith('data:') ? '' : editAvatar}
-                    onChange={(e) => setEditAvatar(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={avatarUrlInput}
+                      onChange={(e) => setAvatarUrlInput(e.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      className="flex-1 bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono text-[11px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyAvatarUrl()}
+                      className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    >
+                      Aplicar
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-3">
+              {/* Submit Button */}
+              <div className="pt-2">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-red-600/30 cursor-pointer transition-all"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white px-8 py-3.5 rounded-2xl font-black text-sm shadow-xl shadow-red-600/30 cursor-pointer transition-all hover:scale-[1.01]"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Guardar Cambios</span>
+                  <span>Guardar Información & Dirección de Entrega</span>
                 </button>
               </div>
+
             </form>
           </div>
         )}
 
       </div>
+
+      {/* MODAL: SELECTOR DE FOTO DE PERFIL & AVATARES */}
+      {isAvatarModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#14141c] border border-zinc-800 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-red-600/20 text-red-400">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Elegir Foto de Perfil</h3>
+                  <p className="text-xs text-zinc-400">Sube una foto o escoge un avatar BadGommys</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAvatarModalOpen(false)}
+                className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="grid grid-cols-3 gap-1 bg-[#101016] p-1 rounded-2xl border border-zinc-800 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setAvatarTab('upload')}
+                className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  avatarTab === 'upload' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Subir Foto</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAvatarTab('presets')}
+                className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  avatarTab === 'presets' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Avatares</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAvatarTab('url')}
+                className={`py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  avatarTab === 'url' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <LinkIcon className="w-3.5 h-3.5" />
+                <span>Enlace Web</span>
+              </button>
+            </div>
+
+            {/* Tab 1: Upload from device */}
+            {avatarTab === 'upload' && (
+              <div className="space-y-4">
+                <label 
+                  htmlFor="modal-avatar-file-upload"
+                  className="border-2 border-dashed border-zinc-700 hover:border-red-500 rounded-2xl p-6 text-center flex flex-col items-center justify-center gap-3 cursor-pointer bg-[#181824] hover:bg-[#1a1a28] transition-all group"
+                >
+                  <div className="w-14 h-14 rounded-full bg-red-600/20 text-red-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Camera className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Haz clic aquí para seleccionar una foto</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">Compatible con galería, fotos de cámara (JPG, PNG, WebP)</p>
+                  </div>
+                  <span className="px-3.5 py-1.5 bg-red-600 text-white text-xs font-bold rounded-xl shadow-md">
+                    Examinar Dispositivo
+                  </span>
+                </label>
+                <input
+                  id="modal-avatar-file-upload"
+                  type="file"
+                  onChange={handleAvatarFileUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
+
+                {isUploadingAvatar && (
+                  <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-xs text-amber-300 flex items-center justify-center gap-2">
+                    <span className="animate-spin">⏳</span>
+                    <span>Procesando imagen con compresión inteligente...</span>
+                  </div>
+                )}
+                {avatarUploadError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-red-300">
+                    {avatarUploadError}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: BadGommys Preset Avatars */}
+            {avatarTab === 'presets' && (
+              <div className="space-y-3">
+                <p className="text-xs text-zinc-400">
+                  Selecciona uno de nuestros personajes y sabores de gomitas artesanales con 1 solo clic:
+                </p>
+                <div className="grid grid-cols-4 gap-3 max-h-60 overflow-y-auto pr-1">
+                  {BADGOMMYS_PRESET_AVATARS.map((preset) => (
+                    <button
+                      type="button"
+                      key={preset.id}
+                      onClick={() => handleSelectPresetAvatar(preset.url)}
+                      className="group p-2 rounded-2xl bg-[#181824] hover:bg-zinc-800 border border-zinc-700/80 hover:border-red-500 transition-all text-center flex flex-col items-center gap-1.5 cursor-pointer"
+                    >
+                      <img
+                        src={preset.url}
+                        alt={preset.name}
+                        className="w-12 h-12 rounded-xl object-cover shadow-sm group-hover:scale-105 transition-transform"
+                      />
+                      <span className="text-[10px] font-bold text-zinc-300 group-hover:text-white line-clamp-1 leading-tight">
+                        {preset.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: URL Direct Link */}
+            {avatarTab === 'url' && (
+              <form onSubmit={handleApplyAvatarUrl} className="space-y-3">
+                <label className="block text-xs font-bold text-zinc-300">
+                  Pega el enlace directo de tu imagen (Unsplash, Imgur, etc.)
+                </label>
+                <input
+                  type="url"
+                  value={avatarUrlInput}
+                  onChange={(e) => setAvatarUrlInput(e.target.value)}
+                  placeholder="https://images.unsplash.com/photo-..."
+                  className="w-full bg-[#101016] border border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                />
+                {avatarUrlInput && (
+                  <div className="flex items-center gap-3 p-3 bg-[#181824] rounded-xl border border-zinc-800">
+                    <img src={avatarUrlInput} alt="Preview" className="w-10 h-10 rounded-lg object-cover" />
+                    <span className="text-xs text-zinc-400">Vista previa en tiempo real</span>
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Guardar y Aplicar Foto
+                </button>
+              </form>
+            )}
+
+            {/* Modal Bottom Actions */}
+            <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
+              {currentUser.avatar && (
+                <button
+                  type="button"
+                  onClick={handleRemoveAvatar}
+                  className="text-xs font-bold text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                >
+                  Quitar foto actual
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsAvatarModalOpen(false)}
+                className="ml-auto px-4 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300 transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

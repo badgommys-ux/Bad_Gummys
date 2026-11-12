@@ -15,7 +15,21 @@ interface CartViewProps {
   onRequireAuth: () => void;
   onCreateOrder: (orderData: Partial<Order>) => Order;
   onOrderCompleted: (order: Order) => void;
+  onUpdateUser?: (updatedUser: User) => void;
 }
+
+export const LOCAL_COVERAGE_ZONES = [
+  { name: 'Naranjos Centro / Cabecera Municipal', note: 'Entrega local express', cp: '92300' },
+  { name: 'Amatlán (Poblado Amatlán)', note: 'Ruta local directa', cp: '92302' },
+  { name: 'Colonia El Trébol / Las Delicias', note: 'Zona urbana Naranjos', cp: '92300' },
+  { name: 'Colonia Aviación / Manuel Ávila Camacho', note: 'Zona urbana Naranjos', cp: '92300' },
+  { name: 'Colonia Bicentenario / Petrolera', note: 'Zona urbana Naranjos', cp: '92300' },
+  { name: 'Colonia Zaragoza / Fomerrey', note: 'Zona urbana Naranjos', cp: '92300' },
+  { name: 'Colonia Tamaulipas / Americana', note: 'Zona urbana Naranjos', cp: '92300' },
+  { name: 'Empalme Amatlán / La Galeana', note: 'Alrededores cercanos', cp: '92305' },
+  { name: 'Rancho Nuevo / Galeana / Chontla (Límites)', note: 'Alrededores inmediatos previa cita', cp: '92308' },
+  { name: 'Tamiahua / Chinampa / Tancoco (Puntos cercanos)', note: 'Ruta comarcal programada', cp: '92310' },
+];
 
 export const CartView: React.FC<CartViewProps> = ({
   items,
@@ -26,19 +40,46 @@ export const CartView: React.FC<CartViewProps> = ({
   onRequireAuth,
   onCreateOrder,
   onOrderCompleted,
+  onUpdateUser,
 }) => {
   const [couponCode, setCouponCode] = useState('');
   const [discountPercent, setDiscountPercent] = useState(0);
   const [couponApplied, setCouponApplied] = useState(false);
   const [couponError, setCouponError] = useState('');
+  const [showCoverageModal, setShowCoverageModal] = useState(false);
+
+  // Helper to build formatted address from user
+  const computeInitialAddress = () => {
+    if (!currentUser) return '';
+    const structured = [
+      (currentUser.streetAndNumber || '').trim() + (currentUser.interiorNumber ? ` Int. ${currentUser.interiorNumber.trim()}` : ''),
+      currentUser.crossStreets ? `Entre ${currentUser.crossStreets.trim()}` : '',
+      currentUser.colony ? `Col. ${currentUser.colony.trim()}` : '',
+      currentUser.city?.trim(),
+      currentUser.state?.trim(),
+      currentUser.postalCode ? `C.P. ${currentUser.postalCode.trim()}` : '',
+    ].filter(Boolean).join(', ');
+    return structured || currentUser.address || '';
+  };
 
   // Checkout Form states
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [shippingAddress, setShippingAddress] = useState(currentUser?.address || '');
+  const [shippingAddress, setShippingAddress] = useState(computeInitialAddress);
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [paymentType, setPaymentType] = useState<'tarjeta' | 'transferencia' | 'efectivo'>('tarjeta');
-  const [deliveryNotes, setDeliveryNotes] = useState('');
+  const [deliveryNotes, setDeliveryNotes] = useState(currentUser?.deliveryReferences || currentUser?.specialInstructions || '');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // Address editing state in checkout
+  const [isEditingAddressInCheckout, setIsEditingAddressInCheckout] = useState(false);
+  const [saveAddressToProfile, setSaveAddressToProfile] = useState(true);
+  const [checkoutStreet, setCheckoutStreet] = useState(currentUser?.streetAndNumber || '');
+  const [checkoutInterior, setCheckoutInterior] = useState(currentUser?.interiorNumber || '');
+  const [checkoutColony, setCheckoutColony] = useState(currentUser?.colony || '');
+  const [checkoutCity, setCheckoutCity] = useState(currentUser?.city || '');
+  const [checkoutState, setCheckoutState] = useState(currentUser?.state || '');
+  const [checkoutPostalCode, setCheckoutPostalCode] = useState(currentUser?.postalCode || '');
+  const [checkoutReferences, setCheckoutReferences] = useState(currentUser?.deliveryReferences || '');
 
   // Credit / Debit Card states
   const [cardNumber, setCardNumber] = useState('');
@@ -106,18 +147,46 @@ export const CartView: React.FC<CartViewProps> = ({
       onRequireAuth();
       return;
     }
-    // Pre-populate address if available
-    if (!shippingAddress && currentUser.address) {
-      setShippingAddress(currentUser.address);
-    }
-    if (!phone && currentUser.phone) {
-      setPhone(currentUser.phone);
-    }
+    // Pre-populate address automatically from user profile
+    const autoAddress = computeInitialAddress();
+    setShippingAddress(autoAddress);
+    setCheckoutStreet(currentUser.streetAndNumber || '');
+    setCheckoutInterior(currentUser.interiorNumber || '');
+    setCheckoutColony(currentUser.colony || '');
+    setCheckoutCity(currentUser.city || '');
+    setCheckoutState(currentUser.state || '');
+    setCheckoutPostalCode(currentUser.postalCode || '');
+    setCheckoutReferences(currentUser.deliveryReferences || '');
+    setPhone(currentUser.phone || '');
+    setDeliveryNotes(currentUser.deliveryReferences || currentUser.specialInstructions || '');
+
+    // Show auto-filled card if address exists, otherwise open editor directly
+    setIsEditingAddressInCheckout(!autoAddress);
+
     if (!cardHolder && currentUser.name) {
       setCardHolder(currentUser.name.toUpperCase());
     }
     setCardError('');
     setIsCheckingOut(true);
+  };
+
+  const handleApplyCheckoutAddress = () => {
+    const parts = [
+      (checkoutStreet.trim() ? checkoutStreet.trim() + (checkoutInterior.trim() ? ` Int. ${checkoutInterior.trim()}` : '') : ''),
+      checkoutColony.trim() ? `Col. ${checkoutColony.trim()}` : '',
+      checkoutCity.trim(),
+      checkoutState.trim(),
+      checkoutPostalCode.trim() ? `C.P. ${checkoutPostalCode.trim()}` : '',
+    ].filter(Boolean);
+    const formatted = parts.length > 0 ? parts.join(', ') : shippingAddress;
+
+    if (formatted) {
+      setShippingAddress(formatted);
+    }
+    if (checkoutReferences) {
+      setDeliveryNotes(checkoutReferences);
+    }
+    setIsEditingAddressInCheckout(false);
   };
 
   const copyToClipboard = (text: string, fieldKey: string) => {
@@ -172,7 +241,7 @@ export const CartView: React.FC<CartViewProps> = ({
       return;
     }
     if (!shippingAddress.trim() && cashOption !== 'tienda_oficial') {
-      setCardError('Por favor introduce tu dirección de entrega en CDMX.');
+      setCardError('Por favor introduce tu dirección de entrega en Naranjos Amatlán, Veracruz o alrededores.');
       return;
     }
 
@@ -237,9 +306,9 @@ export const CartView: React.FC<CartViewProps> = ({
           finalPaymentDetails = {
             methodType: 'cash',
             cashOption: 'tienda_oficial',
-            cashStoreName: 'Tienda Física BadGommys Roma Norte',
+            cashStoreName: 'Tienda Física BadGommys Naranjos',
             cashReferenceCode: pickupCode,
-            pickupLocation: 'Av. Álvaro Obregón #151, Col. Roma Norte, CDMX',
+            pickupLocation: 'Naranjos, Amatlan, Veracruz',
             cashInstructions: 'Paga en caja al recoger tus gomitas en la sucursal física oficial.',
           };
         } else {
@@ -253,13 +322,15 @@ export const CartView: React.FC<CartViewProps> = ({
         }
       }
 
+      const finalAddressToUse = cashOption === 'tienda_oficial' && paymentType === 'efectivo'
+        ? 'Recogida en Tienda Oficial: Naranjos, Amatlan, Veracruz'
+        : shippingAddress;
+
       const order = onCreateOrder({
         customerName: currentUser.name,
         customerEmail: currentUser.email,
         customerPhone: phone || '55 1234 5678',
-        shippingAddress: cashOption === 'tienda_oficial' && paymentType === 'efectivo' 
-          ? 'Recogida en Tienda Oficial: Av. Álvaro Obregón 151, Col. Roma Norte, CDMX'
-          : shippingAddress,
+        shippingAddress: finalAddressToUse,
         items,
         subtotal,
         shippingFee: cashOption === 'tienda_oficial' && paymentType === 'efectivo' ? 0 : shippingFee,
@@ -271,6 +342,31 @@ export const CartView: React.FC<CartViewProps> = ({
         status: 'En preparación',
         paymentStatus: paymentType === 'tarjeta' ? 'Pagado' : 'Pendiente',
       });
+
+      // Synchronize updated address and details into user profile & CRM if requested
+      if (saveAddressToProfile && onUpdateUser && currentUser && finalPaymentMethod !== 'Efectivo en Tienda Oficial') {
+        const parts = [
+          (checkoutStreet.trim() ? checkoutStreet.trim() + (checkoutInterior.trim() ? ` Int. ${checkoutInterior.trim()}` : '') : ''),
+          checkoutColony.trim() ? `Col. ${checkoutColony.trim()}` : '',
+          checkoutCity.trim(),
+          checkoutState.trim(),
+          checkoutPostalCode.trim() ? `C.P. ${checkoutPostalCode.trim()}` : '',
+        ].filter(Boolean);
+        const resolvedAddress = parts.length > 0 ? parts.join(', ') : shippingAddress.trim();
+
+        onUpdateUser({
+          ...currentUser,
+          phone: phone.trim() || currentUser.phone,
+          address: resolvedAddress || currentUser.address,
+          streetAndNumber: checkoutStreet.trim() || currentUser.streetAndNumber,
+          interiorNumber: checkoutInterior.trim() || currentUser.interiorNumber,
+          colony: checkoutColony.trim() || currentUser.colony,
+          city: checkoutCity.trim() || currentUser.city,
+          state: checkoutState.trim() || currentUser.state,
+          postalCode: checkoutPostalCode.trim() || currentUser.postalCode,
+          deliveryReferences: checkoutReferences.trim() || deliveryNotes.trim() || currentUser.deliveryReferences,
+        });
+      }
 
       setIsProcessingPayment(false);
       setIsCheckingOut(false);
@@ -474,19 +570,22 @@ export const CartView: React.FC<CartViewProps> = ({
                   </div>
                 )}
 
-                <div className="flex justify-between text-zinc-300">
-                  <div className="flex items-center gap-1.5">
-                    <Truck className="w-4 h-4 text-zinc-400" />
-                    <span>Envío</span>
+                  <div className="flex justify-between text-zinc-300">
+                    <div className="flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-amber-400" />
+                      <span>Envío Local</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-bold">
+                        {shippingFee === 0 ? (
+                          <span className="text-emerald-400 uppercase font-black text-xs">¡Gratis!</span>
+                        ) : (
+                          `$${shippingFee} MXN`
+                        )}
+                      </span>
+                      <span className="block text-[10px] text-amber-400 font-semibold">Naranjos & Alrededores</span>
+                    </div>
                   </div>
-                  <span className="font-bold">
-                    {shippingFee === 0 ? (
-                      <span className="text-emerald-400 uppercase font-black text-xs">¡Gratis!</span>
-                    ) : (
-                      `$${shippingFee} MXN`
-                    )}
-                  </span>
-                </div>
 
                 {subtotal < freeShippingThreshold && (
                   <p className="text-[11px] text-amber-400/90 bg-amber-950/30 p-2 rounded-lg border border-amber-800/30">
@@ -533,6 +632,22 @@ export const CartView: React.FC<CartViewProps> = ({
                 >
                   <span>Seguir añadiendo más artículos</span>
                 </button>
+
+                {/* WhatsApp Quick Order button for local Naranjos customers */}
+                <a
+                  href={`https://wa.me/527681046796?text=${encodeURIComponent(
+                    `¡Hola BadGommys! 🌶️ Me gustaría hacer este pedido para Naranjos/Amatlán:\n\n${items
+                      .map((i) => `• ${i.quantity}x ${i.product.name} ($${i.product.price * i.quantity} MXN)`)
+                      .join('\n')}\n\n*Total estimado:* $${total} MXN\n\n¿Tienen disponibilidad para entrega hoy?`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 hover:text-white py-3 rounded-2xl font-bold text-xs transition-all cursor-pointer shadow-md"
+                  title="Ordenar directamente con atención humana por WhatsApp"
+                >
+                  <span className="text-base">💬</span>
+                  <span>O pedir directamente por WhatsApp</span>
+                </a>
               </div>
 
             </div>
@@ -589,36 +704,235 @@ export const CartView: React.FC<CartViewProps> = ({
                 <span className="text-zinc-400 font-mono text-[11px] truncate max-w-[200px]">{currentUser.email}</span>
               </div>
 
+              {/* ZONA DE COBERTURA DE ENVÍO LOCAL (Naranjos Amatlán y alrededores) */}
+              <div className="p-3.5 bg-gradient-to-r from-amber-950/40 via-[#1e1a14] to-[#16141c] rounded-2xl border border-amber-500/40 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-amber-400 font-black text-xs uppercase tracking-wider">
+                    <Truck className="w-4 h-4 shrink-0" />
+                    <span>📍 Cobertura de Entrega Local</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCoverageModal(true)}
+                    className="text-[11px] font-bold text-amber-300 hover:text-white underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                    <span>Ver colonias & zonas</span>
+                  </button>
+                </div>
+                
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  BadGommys es un emprendimiento artesanal en crecimiento: realizamos entregas a domicilio en 
+                  <strong className="text-white font-bold"> Naranjos, Amatlán, Veracruz</strong> y localidades/alrededores cercanos del municipio.
+                </p>
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-[10px] font-bold text-amber-300">
+                    ✓ Naranjos Centro (C.P. 92300)
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-[10px] font-bold text-amber-300">
+                    ✓ Amatlán
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-[10px] font-bold text-amber-300">
+                    ✓ Colonias Urbanas & Alrededores
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold">
+                    ✓ O entrega en Tienda Física Oficial
+                  </span>
+                </div>
+              </div>
+
               {/* Delivery Address & Contact (hidden/simplified if picking up in physical store) */}
               {!(paymentType === 'efectivo' && cashOption === 'tienda_oficial') ? (
                 <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
-                      Dirección Completa de Envío *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={shippingAddress}
-                      onChange={(e) => setShippingAddress(e.target.value)}
-                      placeholder="Calle, número exterior e interior, colonia, municipio/alcaldía, C.P."
-                      className="w-full bg-[#1c1c24] border border-zinc-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
-                    />
-                  </div>
+                  {!isEditingAddressInCheckout && shippingAddress ? (
+                    /* Auto-loaded Address Card */
+                    <div className="p-4 bg-gradient-to-br from-red-950/30 via-[#181824] to-[#14141c] rounded-2xl border border-red-500/40 space-y-3 shadow-lg">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1.5 rounded-lg bg-red-600/20 text-red-400">
+                            <MapPin className="w-4 h-4" />
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-black uppercase text-amber-400 tracking-wider">
+                                Dirección de tu Cuenta
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                                {currentUser.addressType || 'Casa'}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                              ✓ Auto-cargada para este pedido
+                            </span>
+                          </div>
+                        </div>
 
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-300 mb-1">
-                      Teléfono de Contacto para el Repartidor *
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="Ej. 55 1234 5678"
-                      className="w-full bg-[#1c1c24] border border-zinc-700 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
-                    />
-                  </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingAddressInCheckout(true)}
+                          className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-400 hover:text-amber-300 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:scale-[1.02]"
+                          title="Cambiar o editar la dirección para este pedido"
+                        >
+                          <span>✏️ Cambiar / Editar</span>
+                        </button>
+                      </div>
+
+                      <div className="bg-[#101016] p-3 rounded-xl border border-zinc-800 space-y-1.5">
+                        <p className="text-xs sm:text-sm font-bold text-white leading-snug">
+                          {shippingAddress}
+                        </p>
+                        {(deliveryNotes || currentUser.deliveryReferences) && (
+                          <p className="text-xs text-amber-300/90 flex items-start gap-1.5">
+                            <span className="font-bold text-[10px] uppercase text-zinc-400 shrink-0">Referencias:</span>
+                            <span className="line-clamp-2">{deliveryNotes || currentUser.deliveryReferences}</span>
+                          </p>
+                        )}
+                        {currentUser.preferredDeliverySchedule && (
+                          <p className="text-[11px] text-sky-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3 shrink-0" />
+                            <span>Horario preferido: {currentUser.preferredDeliverySchedule}</span>
+                          </p>
+                        )}
+                        <div className="pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-between text-[11px] text-zinc-400 gap-2">
+                          <p>
+                            📞 Teléfono: <strong className="text-white">{phone || currentUser.phone || 'Sin registrar'}</strong>
+                            {currentUser.secondaryPhone && (
+                              <span className="ml-2">• Respaldo: <strong className="text-zinc-300">{currentUser.secondaryPhone}</strong></span>
+                            )}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingAddressInCheckout(true)}
+                            className="text-[11px] text-amber-400 hover:underline cursor-pointer"
+                          >
+                            Modificar datos
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Inline Address Editor */
+                    <div className="p-4 bg-[#181824] rounded-2xl border border-amber-500/40 space-y-3 shadow-md">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+                          <MapPin className="w-4 h-4" />
+                          <span>Modificar Dirección de Entrega</span>
+                        </div>
+                        {shippingAddress && (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingAddressInCheckout(false)}
+                            className="text-xs text-zinc-400 hover:text-white underline cursor-pointer"
+                          >
+                            ✕ Cancelar y usar guardada
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-bold text-zinc-400 mb-1">Calle y Número Exterior *</label>
+                          <input
+                            type="text"
+                            required
+                            value={checkoutStreet}
+                            onChange={(e) => setCheckoutStreet(e.target.value)}
+                            placeholder="Ej. Av. Hidalgo #123"
+                            className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-zinc-400 mb-1">No. Interior / Depto</label>
+                          <input
+                            type="text"
+                            value={checkoutInterior}
+                            onChange={(e) => setCheckoutInterior(e.target.value)}
+                            placeholder="Ej. Depto 4B"
+                            className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <label className="block text-[11px] font-bold text-zinc-400 mb-1">Colonia / Barrio *</label>
+                          <input
+                            type="text"
+                            required
+                            value={checkoutColony}
+                            onChange={(e) => setCheckoutColony(e.target.value)}
+                            placeholder="Ej. Centro"
+                            className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-zinc-400 mb-1">Ciudad / Municipio *</label>
+                          <input
+                            type="text"
+                            required
+                            value={checkoutCity}
+                            onChange={(e) => setCheckoutCity(e.target.value)}
+                            placeholder="Ej. Naranjos Amatlán, Veracruz"
+                            className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-zinc-400 mb-1">C.P. / Estado</label>
+                          <input
+                            type="text"
+                            value={checkoutPostalCode}
+                            onChange={(e) => setCheckoutPostalCode(e.target.value)}
+                            placeholder="Ej. 92300"
+                            className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-400 mb-1">Referencias para el Repartidor</label>
+                        <input
+                          type="text"
+                          value={checkoutReferences}
+                          onChange={(e) => setCheckoutReferences(e.target.value)}
+                          placeholder="Fachada, color de puerta, entre qué calles o timbre"
+                          className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-zinc-400 mb-1">Teléfono de Contacto para Entrega *</label>
+                        <input
+                          type="tel"
+                          required
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="Ej. 55 1234 5678"
+                          className="w-full bg-[#121218] border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-zinc-800">
+                        <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={saveAddressToProfile}
+                            onChange={(e) => setSaveAddressToProfile(e.target.checked)}
+                            className="rounded text-red-600 focus:ring-red-500 bg-zinc-800 border-zinc-700 cursor-pointer"
+                          />
+                          <span>Guardar también esta dirección en mi cuenta para próximos pedidos</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={handleApplyCheckoutAddress}
+                          className="px-4 py-2 bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md self-end sm:self-auto"
+                        >
+                          ✓ Aplicar a este Pedido
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-3.5 bg-amber-950/20 border border-amber-500/30 rounded-2xl">
@@ -627,7 +941,7 @@ export const CartView: React.FC<CartViewProps> = ({
                     <span>Recogerás directamente en nuestra Tienda Física Oficial de Gomitas</span>
                   </div>
                   <p className="text-xs text-zinc-300">
-                    Av. Álvaro Obregón #151, Col. Roma Norte, Cuauhtémoc, CDMX.
+                    Naranjos, Amatlan, Veracruz.
                   </p>
                   <p className="text-[11px] text-zinc-400 mt-1">
                     Teléfono de confirmación: <span className="text-white font-mono">{phone || currentUser.phone || '55 1234 5678'}</span>
@@ -1183,12 +1497,12 @@ export const CartView: React.FC<CartViewProps> = ({
                         <div className="flex items-start gap-2.5">
                           <MapPin className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-bold text-white block">BadGommys Flagship Store Roma Norte</span>
+                            <span className="font-bold text-white block">BadGommys Tienda Oficial & Taller</span>
                             <span className="text-zinc-300 text-xs block">
-                              Av. Álvaro Obregón #151, Col. Roma Norte, Cuauhtémoc, CDMX (C.P. 06700).
+                              Naranjos, Amatlan, Veracruz.
                             </span>
                             <span className="text-zinc-500 text-[11px] block mt-0.5">
-                              Entre calles Orizaba y Jalapa • A 2 cuadras del Parque México
+                              Entregas directas en mostrador local • Atención personalizada
                             </span>
                           </div>
                         </div>
@@ -1196,7 +1510,7 @@ export const CartView: React.FC<CartViewProps> = ({
                         <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 text-[11px] text-zinc-400">
                           <Clock className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                           <span>
-                            <strong>Horarios:</strong> Lunes a Sábado de 11:00 AM a 8:30 PM | Domingos de 12:00 PM a 6:00 PM
+                            <strong>Horarios:</strong> Lunes a Sábado de 9:00 AM a 9:00 PM
                           </span>
                         </div>
                       </div>
@@ -1315,6 +1629,83 @@ export const CartView: React.FC<CartViewProps> = ({
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL INTERACTIVO: ZONA DE COBERTURA DE ENVÍOS LOCALES */}
+      {showCoverageModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-[#14141c] border border-amber-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Zonas de Entrega & Cobertura</h3>
+                  <p className="text-xs text-amber-300">Naranjos, Amatlán, Veracruz y alrededores</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCoverageModal(false)}
+                className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-950/30 border border-amber-500/30 rounded-2xl text-xs text-amber-200">
+              <p className="font-bold text-white mb-0.5">🌱 ¡Apoyando el comercio local!</p>
+              BadGommys es un emprendimiento artesanal en crecimiento con sede en Naranjos. Nuestros repartidores entregan en toda la zona urbana y comunidades vecinas.
+            </div>
+
+            <div className="overflow-y-auto space-y-2 pr-1 flex-1 text-xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block mb-1">
+                Localidades y Colonias con Cobertura Activa:
+              </span>
+
+              <div className="grid grid-cols-1 gap-2">
+                {LOCAL_COVERAGE_ZONES.map((zone, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 bg-[#181824] rounded-xl border border-zinc-800/80 flex items-center justify-between gap-3 hover:border-amber-500/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      <div>
+                        <span className="font-bold text-white block">{zone.name}</span>
+                        <span className="text-[11px] text-zinc-400">{zone.note}</span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-zinc-800 text-amber-300 border border-zinc-700 shrink-0">
+                      C.P. {zone.cp}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-3 bg-zinc-900/80 rounded-xl border border-zinc-800 text-zinc-300 text-[11px] space-y-1">
+                <p>
+                  <strong>💡 ¿Vives en una ranchería o localidad cercana no listada?</strong>
+                </p>
+                <p className="text-zinc-400">
+                  Puedes seleccionar entrega en un punto céntrico de Naranjos o bien la opción de 
+                  <strong className="text-amber-300"> "Recogida en Tienda Oficial"</strong> sin ningún costo de envío.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-zinc-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowCoverageModal(false)}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-black font-black rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Entendido
+              </button>
+            </div>
           </div>
         </div>
       )}

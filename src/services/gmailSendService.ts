@@ -184,7 +184,7 @@ export function buildBadGommysEmailHtml(payload: GmailSendPayload): string {
           BadGommys México • Taller Artesanal
         </p>
         <p style="margin: 0 0 8px 0;">
-          Naranjos, Amatlan, Veracruz • Tel: +52 55 8392-4512
+          Naranjos, Amatlan, Veracruz • Tel: +52 768 104-6796
         </p>
         <p style="margin: 0; color: #94A3B8; font-size: 11px;">
           Recibes este correo porque eres cliente registrado o te suscribiste a nuestro boletín de noticias en badgommys.com.<br>

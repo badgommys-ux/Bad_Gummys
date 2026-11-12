@@ -4,9 +4,17 @@ import { User } from '../types';
 import { ADMIN_CREDENTIALS } from '../data/initialData';
 import { badgommysLogo } from '../assets';
 
+import { 
+  getSavedAdminProfile, 
+  getSavedUserAvatar, 
+  saveUserAvatar,
+  DEFAULT_CUSTOMER_AVATAR 
+} from '../utils/userStorage';
+
 interface AuthModalProps {
   isOpen: boolean;
   defaultTab?: 'customer' | 'admin';
+  customers?: User[];
   onClose: () => void;
   onLoginSuccess: (user: User) => void;
 }
@@ -14,6 +22,7 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   defaultTab = 'customer',
+  customers = [],
   onClose,
   onLoginSuccess,
 }) => {
@@ -46,15 +55,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       trimmedEmail === ADMIN_CREDENTIALS.email.toLowerCase() &&
       trimmedPassword === ADMIN_CREDENTIALS.password
     ) {
-      // Authorized admin login
-      const adminUser: User = {
-        id: 'admin-master',
-        name: 'Administrador BadGommys',
-        email: ADMIN_CREDENTIALS.email,
-        role: 'admin',
-        registeredAt: '2026-01-01',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-      };
+      // Authorized admin login with persistent saved avatar and profile
+      const adminUser = getSavedAdminProfile();
       onLoginSuccess(adminUser);
       onClose();
     } else {
@@ -67,28 +69,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     setCustomerError('');
 
-    if (isRegistering && !customerName) {
+    const cleanEmail = customerEmail.trim().toLowerCase();
+
+    if (isRegistering && !customerName.trim()) {
       setCustomerError('Por favor ingresa tu nombre completo.');
       return;
     }
-    if (!customerEmail || !customerPassword) {
+    if (!cleanEmail || !customerPassword) {
       setCustomerError('Ingresa tu correo y contraseña.');
       return;
     }
 
-    const newUser: User = {
-      id: `cust-${Date.now()}`,
-      name: isRegistering ? customerName : customerEmail.split('@')[0],
-      email: customerEmail,
-      phone: customerPhone || '55 1234 5678',
-      address: 'Ciudad de México, CDMX',
-      role: 'customer',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-      registeredAt: new Date().toISOString().split('T')[0],
-      totalOrders: 0,
-    };
+    // Check if customer already exists in system to preserve their saved avatar and info
+    const existing = customers.find(c => c.email.trim().toLowerCase() === cleanEmail);
+    const cachedAvatar = getSavedUserAvatar(cleanEmail);
 
-    onLoginSuccess(newUser);
+    let userToLogin: User;
+
+    if (existing) {
+      // Preserve existing profile and avatar
+      userToLogin = {
+        ...existing,
+        name: isRegistering && customerName.trim() ? customerName.trim() : existing.name,
+        phone: customerPhone.trim() || existing.phone,
+        avatar: existing.avatar || cachedAvatar || DEFAULT_CUSTOMER_AVATAR,
+      };
+    } else {
+      // Create new customer account with any previously cached avatar or default
+      userToLogin = {
+        id: `cust-${Date.now()}`,
+        name: isRegistering && customerName.trim() ? customerName.trim() : cleanEmail.split('@')[0],
+        email: cleanEmail,
+        phone: customerPhone.trim() || '55 1234 5678',
+        address: 'Naranjos, Amatlan, Veracruz',
+        role: 'customer',
+        avatar: cachedAvatar || DEFAULT_CUSTOMER_AVATAR,
+        registeredAt: new Date().toISOString().split('T')[0],
+        totalOrders: 0,
+      };
+    }
+
+    if (userToLogin.avatar) {
+      saveUserAvatar(cleanEmail, userToLogin.avatar);
+    }
+
+    onLoginSuccess(userToLogin);
     onClose();
   };
 

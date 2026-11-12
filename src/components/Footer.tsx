@@ -181,7 +181,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenTracking }) =>
                   <Facebook className="w-5 h-5" />
                 </a>
                 <a
-                  href="https://wa.me/525583924512?text=Hola%20BadGommys,%20quiero%20hacer%20un%20pedido!"
+                  href="https://wa.me/527681046796?text=Hola%20BadGommys,%20quiero%20hacer%20un%20pedido!"
                   target="_blank"
                   rel="noreferrer"
                   className="w-10 h-10 rounded-full bg-zinc-900 hover:bg-emerald-600 border border-zinc-800 text-zinc-300 hover:text-white flex items-center justify-center transition-all shadow-md"
@@ -250,7 +250,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenTracking }) =>
             <div className="space-y-3 text-sm">
               <div className="flex items-center gap-3">
                 <Phone className="w-4 h-4 text-red-500 shrink-0" />
-                <span>+52 (55) 8392-4512</span>
+                <span>+52 (768) 104-6796</span>
               </div>
               <div className="flex items-center gap-3">
                 <Mail className="w-4 h-4 text-red-500 shrink-0" />
@@ -263,7 +263,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenTracking }) =>
                 <span>Naranjos, Amatlan, Veracruz</span>
               </div>
               <p className="text-xs text-zinc-500 pt-1">
-                Lunes a Sábado: 9:00 AM a 9:00 PM | Envíos a todo el país
+                Lunes a Sábado: 9:00 AM a 9:00 PM | Entregas locales en Naranjos, Amatlán y alrededores
               </p>
             </div>
           </div>

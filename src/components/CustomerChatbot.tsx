@@ -102,9 +102,9 @@ export const CustomerChatbot: React.FC<CustomerChatbotProps> = ({
             onNavigateToProducts();
           },
         };
-      } else if (q.includes('envio') || q.includes('envío') || q.includes('entrega') || q.includes('tiempo') || q.includes('cdmx')) {
-        botResponse = '🚚 **Envíos Express:** En CDMX y área metropolitana entregamos el **mismo día** en 45 a 60 minutos con Moto Express. El costo de envío es de $49 MXN, o **¡GRATIS en compras mayores a $350 MXN!**';
-        suggestions = ['¿Dónde está la tienda física?', 'Ver productos para envío gratis'];
+      } else if (q.includes('envio') || q.includes('envío') || q.includes('entrega') || q.includes('tiempo') || q.includes('naranjos') || q.includes('amatlan') || q.includes('donde') || q.includes('dónde')) {
+        botResponse = '🚚 **Cobertura de Envíos:** Al ser un negocio artesanal local en crecimiento, nuestras entregas a domicilio son exclusivas en **Naranjos, Amatlán, Veracruz y sus alrededores** (Centro, Amatlán, El Trébol, Aviación, Bicentenario, etc.). También puedes recoger tu pedido en nuestra tienda oficial de Naranjos. ¡El envío es **GRATIS en compras mayores a $350 MXN!**';
+        suggestions = ['¿Dónde está la tienda física?', 'Ver zonas de entrega en el carrito'];
       } else if (q.includes('oxxo') || q.includes('pago') || q.includes('spei') || q.includes('tarjeta') || q.includes('efectivo')) {
         botResponse = '💳 Aceptamos:\n• **Tarjetas** de crédito y débito Visa, Mastercard y Amex (cifrado 256-bit).\n• **Transferencia SPEI** con CLABE directa de BBVA sin comisiones.\n• **Efectivo en OXXO Pay** con código de barras.\n• **Efectivo Contra Entrega** al repartidor en tu puerta.';
         suggestions = ['¿Cómo comprar?', '¿Tienen cupones?'];
@@ -144,10 +144,10 @@ export const CustomerChatbot: React.FC<CustomerChatbotProps> = ({
         botResponse = '📍 Nuestra sede física oficial está en **Naranjos, Amatlan, Veracruz**. Abrimos de Lunes a Sábado de 9:00 AM a 9:00 PM y realizamos envíos a todo México. ¡Te consentimos con recetas artesanales únicas!';
         suggestions = ['¿Tienen envío a domicilio?', '¿Cuál es su WhatsApp?'];
       } else if (q.includes('redes') || q.includes('tiktok') || q.includes('facebook') || q.includes('instagram')) {
-        botResponse = '📱 ¡Síguenos en nuestras redes sociales oficiales!\n• **TikTok**: https://www.tiktok.com/@bad.gommys?_r=1&_t=ZS-9A9Oj6QjhFF\n• **Facebook**: https://www.facebook.com/share/19TbNtWtdS/?mibextid=wwXIfr\n• **Instagram**: https://www.instagram.com/badgummys_1\n• **WhatsApp**: +52 (55) 8392-4512';
+        botResponse = '📱 ¡Síguenos en nuestras redes sociales oficiales!\n• **TikTok**: https://www.tiktok.com/@bad.gommys?_r=1&_t=ZS-9A9Oj6QjhFF\n• **Facebook**: https://www.facebook.com/share/19TbNtWtdS/?mibextid=wwXIfr\n• **Instagram**: https://www.instagram.com/badgummys_1\n• **WhatsApp**: +52 (768) 104-6796';
         suggestions = ['Ver catálogo de productos', '¿Cuál es su dirección?'];
       } else if (q.includes('whatsapp') || q.includes('telefono') || q.includes('humano') || q.includes('contacto')) {
-        botResponse = '📱 Puedes escribirle directamente a nuestro equipo humano por WhatsApp al **+52 (55) 8392-4512** o a **badgommys@gmail.com**. ¡Estamos atentos para atenderte!';
+        botResponse = '📱 Puedes escribirle directamente a nuestro equipo humano por WhatsApp al **+52 (768) 104-6796** o a **badgommys@gmail.com**. ¡Estamos atentos para atenderte!';
         suggestions = ['🔥 ¿Cuáles son las más picosas?', '🚚 ¿Cuánto tarda el envío?'];
       } else {
         botResponse = '¡Gracias por tu mensaje! En BadGommys preparamos las mejores gomitas artesanales dulces y con chamoy de México. Puedo ayudarte con recomendaciones de sabores, dudas sobre envíos, pagos o rastreo de tu comanda.';
@@ -287,10 +287,10 @@ export const CustomerChatbot: React.FC<CustomerChatbotProps> = ({
             </button>
             <span className="text-zinc-700">•</span>
             <button
-              onClick={() => handleSendMessage('🚚 ¿Cuánto tarda el envío?')}
+              onClick={() => handleSendMessage('🚚 ¿Dónde realizan entregas y envíos?')}
               className="text-zinc-400 hover:text-white px-2 py-0.5 rounded-md hover:bg-zinc-800 shrink-0 cursor-pointer"
             >
-              🚚 Envíos CDMX
+              🚚 Envíos Naranjos
             </button>
             <span className="text-zinc-700">•</span>
             <button
@@ -301,7 +301,7 @@ export const CustomerChatbot: React.FC<CustomerChatbotProps> = ({
             </button>
             <span className="text-zinc-700">•</span>
             <a
-              href="https://wa.me/525583924512"
+              href="https://wa.me/527681046796"
               target="_blank"
               rel="noreferrer"
               className="text-emerald-400 font-bold px-2 py-0.5 rounded-md hover:bg-emerald-950 shrink-0 cursor-pointer"

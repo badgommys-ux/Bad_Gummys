@@ -1015,7 +1015,7 @@ export const AdminCampaignsTab: React.FC<AdminCampaignsTabProps> = ({
                 {/* Email Footer */}
                 <div className="bg-zinc-100 p-5 text-center text-[10px] text-zinc-500 border-t border-zinc-200 space-y-1">
                   <div className="font-bold text-zinc-700">BadGommys Confitería Artesanal</div>
-                  <div>Naranjos, Amatlan, Veracruz | Tel: +52 55 8392-4512</div>
+                  <div>Naranjos, Amatlan, Veracruz | Tel: +52 768 104-6796</div>
                   <div className="text-[9px] text-zinc-400 pt-1">
                     Recibes este correo porque compraste o registraste tu correo en la tienda oficial badgommys.com.
                   </div>

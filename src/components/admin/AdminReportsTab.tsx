@@ -1,5 +1,5 @@
 import React from 'react';
-import { Order, Product, User } from '../../types';
+import { Order, Product, User, ERPInsumo } from '../../types';
 import { 
   BarChart2, 
   TrendingUp, 
@@ -11,19 +11,23 @@ import {
   CheckCircle2, 
   Flame, 
   Layers,
-  Award
+  Award,
+  Box,
+  Network
 } from 'lucide-react';
 
 interface AdminReportsTabProps {
   orders: Order[];
   products: Product[];
   customers: User[];
+  insumos?: ERPInsumo[];
 }
 
 export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
   orders,
   products,
   customers,
+  insumos = [],
 }) => {
   // Calculations
   const paidOrders = orders.filter(o => o.paymentStatus === 'Pagado');
@@ -34,6 +38,12 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
   const avgTicket = paidOrders.length > 0 ? Math.round(grossSales / paidOrders.length) : 0;
   // Estimated COGS average is ~28% of gross sales -> Net gross profit is ~72%
   const estimatedProfit = Math.round(grossSales * 0.72);
+
+  // Real-time Inventory Valuation
+  const totalProductsInventoryValue = products.reduce((sum, p) => sum + (p.stock * p.price), 0);
+  const totalCatalogStockUnits = products.reduce((sum, p) => sum + p.stock, 0);
+  const totalInsumosValue = insumos.reduce((sum, i) => sum + (i.stock * i.unitCost), 0);
+  const totalEnterpriseInventoryValue = totalProductsInventoryValue + totalInsumosValue;
 
   // Payment Breakdown
   const paymentBreakdown: Record<string, number> = {};
@@ -163,6 +173,56 @@ export const AdminReportsTab: React.FC<AdminReportsTabProps> = ({
           </div>
           <div className="w-10 h-10 rounded-2xl bg-sky-600/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
             <CheckCircle2 className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
+      {/* Real-time Enterprise Inventory Valuation Card */}
+      <div className="bg-gradient-to-r from-[#121218] via-[#161624] to-[#121218] border border-emerald-500/30 rounded-3xl p-6 shadow-2xl space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+              <Network className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-white">Valuación de Activos & Inventario Global (ERP)</h3>
+              <p className="text-xs text-zinc-400">Cálculo dinámico sincronizado en tiempo real con ventas, compras y producción artesanal.</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor Total del Inventario</span>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">
+              ${totalEnterpriseInventoryValue.toLocaleString()} <span className="text-xs text-zinc-400 font-sans">MXN</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="p-3.5 bg-[#181822] rounded-2xl border border-zinc-800/80 space-y-1">
+            <div className="flex items-center justify-between text-zinc-400">
+              <span className="font-bold">Gomitas en Catálogo</span>
+              <Box className="w-3.5 h-3.5 text-amber-400" />
+            </div>
+            <div className="text-lg font-black text-white font-mono">${totalProductsInventoryValue.toLocaleString()} MXN</div>
+            <p className="text-[11px] text-zinc-400">{totalCatalogStockUnits} unidades listas para venta</p>
+          </div>
+
+          <div className="p-3.5 bg-[#181822] rounded-2xl border border-zinc-800/80 space-y-1">
+            <div className="flex items-center justify-between text-zinc-400">
+              <span className="font-bold">Materias Primas (Insumos)</span>
+              <Flame className="w-3.5 h-3.5 text-red-400" />
+            </div>
+            <div className="text-lg font-black text-emerald-400 font-mono">${totalInsumosValue.toLocaleString()} MXN</div>
+            <p className="text-[11px] text-zinc-400">{insumos.length} insumos en almacén de taller</p>
+          </div>
+
+          <div className="p-3.5 bg-[#181822] rounded-2xl border border-zinc-800/80 space-y-1">
+            <div className="flex items-center justify-between text-zinc-400">
+              <span className="font-bold">Capital Circulante Total</span>
+              <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            </div>
+            <div className="text-lg font-black text-amber-400 font-mono">${(totalEnterpriseInventoryValue + grossSales).toLocaleString()} MXN</div>
+            <p className="text-[11px] text-emerald-400 font-semibold">Ventas realizadas + Stock valuado</p>
           </div>
         </div>
       </div>

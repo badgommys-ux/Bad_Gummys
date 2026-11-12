@@ -263,11 +263,11 @@ export const ContactView: React.FC<ContactViewProps> = ({
                   </div>
                   <div>
                     <span className="text-xs text-zinc-400 font-semibold block">Número de Teléfono</span>
-                    <span className="text-sm font-bold text-white">+52 (55) 8392-4512</span>
+                    <span className="text-sm font-bold text-white">+52 (768) 104-6796</span>
                   </div>
                 </div>
                 <button
-                  onClick={() => copyToClipboard('+525583924512', 'phone')}
+                  onClick={() => copyToClipboard('+527681046796', 'phone')}
                   className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
                   title="Copiar teléfono"
                 >
@@ -310,7 +310,7 @@ export const ContactView: React.FC<ContactViewProps> = ({
 
               {/* WhatsApp CTA */}
               <a
-                href="https://wa.me/525583924512?text=Hola%20BadGommys,%20quiero%20hacer%20un%20pedido!"
+                href="https://wa.me/527681046796?text=Hola%20BadGommys,%20quiero%20hacer%20un%20pedido!"
                 target="_blank"
                 rel="noreferrer"
                 className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-2xl font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
